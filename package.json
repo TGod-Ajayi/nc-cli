@@ -1,0 +1,44 @@
+{
+  "name": "naijacloud-cli",
+  "version": "0.1.0",
+  "description": "Command-line interface for NaijaCloud hosting: authenticate, and manage projects, services, deployments, domains and environment variables. Also serves those operations to AI agents over MCP via `naijacloud mcp`.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "naijacloud": "build/cli.js"
+  },
+  "files": [
+    "build",
+    "README.md",
+    "install.sh"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x build/cli.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf build",
+    "//prepare": "Runs on `npm install` and on `npm install -g .`, so a fresh clone gets a usable build/cli.js without a separate step.",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run clean && npm run build",
+    "inspector": "npx @modelcontextprotocol/inspector node build/cli.js mcp"
+  },
+  "keywords": [
+    "naijacloud",
+    "cli",
+    "deployment",
+    "hosting",
+    "devops",
+    "mcp",
+    "model-context-protocol"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^7.0.2"
+  }
+}
