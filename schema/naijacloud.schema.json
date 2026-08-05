@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "description": "Path to the JSON Schema for editor completion. `naijacloud schema --write` refreshes the local copy at .naijacloud/schema.json.",
+      "type": "string"
+    },
+    "version": {
+      "description": "Manifest format version. Currently 1.",
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "name": {
+      "description": "Site name, used for the generated *.naijacloud.com subdomain. Applies to the first deploy only — renaming later is a dashboard operation.",
+      "type": "string",
+      "minLength": 1
+    },
+    "serviceId": {
+      "description": "The site this directory deploys to, written by the first successful deploy. Its presence is what makes a deploy a redeploy: same site, same URL, atomic cutover.",
+      "type": "string",
+      "minLength": 1
+    },
+    "build": {
+      "description": "Command run locally before the output directory is archived, e.g. 'npm run build'. A non-zero exit aborts the deploy before anything is uploaded. Skipped by --prebuilt.",
+      "type": "string"
+    },
+    "output": {
+      "description": "Directory whose contents are deployed, relative to this file — e.g. 'dist'. May also be a single .html file.",
+      "type": "string"
+    },
+    "spa": {
+      "description": "Serve the index file for unmatched paths, so client-side routes survive a hard refresh. True for single-page apps, false for multi-page static sites.",
+      "type": "boolean"
+    },
+    "index": {
+      "description": "Entry file, when it is not index.html.",
+      "type": "string"
+    },
+    "ignore": {
+      "description": "Glob patterns excluded from the archive, on top of the always-excluded set (.git, node_modules, .naijacloud, .env files).",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": {},
+  "description": "Deploy manifest for the NaijaCloud CLI. Written by `naijacloud deploy`; commit it.",
+  "title": "NaijaCloud deploy manifest (naijacloud.json)",
+  "x-generated-by": "naijacloud-cli/0.1.0"
+}

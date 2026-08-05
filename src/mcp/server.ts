@@ -34,8 +34,8 @@ import {
   SCOPE_BY_TARGET,
   setEnvVar,
   triggerDeploy,
-} from "./api-client.js";
-import type { EnvTarget, ServiceEnvVar } from "./api-client.js";
+} from "../api/index.js";
+import type { EnvTarget, ServiceEnvVar } from "../api/index.js";
 
 const SERVER_NAME = "naijacloud";
 const SERVER_VERSION = CLIENT_VERSION;

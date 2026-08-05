@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: NaijaCloud.CLI
+PackageVersion: {{VERSION}}
+PackageLocale: en-US
+Publisher: NaijaCloud
+PublisherUrl: https://naijacloud.com
+PublisherSupportUrl: https://github.com/{{REPO_SLUG}}/issues
+PackageName: NaijaCloud CLI
+PackageUrl: https://github.com/{{REPO_SLUG}}
+License: MIT
+LicenseUrl: https://github.com/{{REPO_SLUG}}/blob/main/LICENSE
+ShortDescription: Deploy and manage NaijaCloud hosting from the terminal, and over MCP
+Description: |-
+  The NaijaCloud CLI deploys static sites with a single command and manages
+  projects, services, deployments, custom domains and environment variables
+  without leaving the terminal. It also runs as an MCP server, so an AI agent
+  can perform the same operations through `naijacloud mcp`.
+Moniker: naijacloud
+Tags:
+  - cli
+  - deployment
+  - devops
+  - hosting
+  - mcp
+  - static-site
+ReleaseNotesUrl: https://github.com/{{REPO_SLUG}}/releases/tag/v{{VERSION}}
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

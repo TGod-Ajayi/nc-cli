@@ -1,0 +1,215 @@
+# Cuts a release across every distribution channel.
+#
+# Trigger: pushing a `v*` tag (or running it by hand with a version input).
+#
+#   tag ──> build matrix (5 platforms) ──> release ──> npm publish
+#                                            │
+#                                            ├─> .deb / .rpm attached
+#                                            └─> rendered manifests for
+#                                                Homebrew / Scoop / WinGet
+#
+# Each platform is built on its own runner because Node's single-executable
+# support cannot cross-compile: injecting the blob requires a `node` binary for
+# the target platform.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (defaults to package.json)"
+        required: false
+
+permissions:
+  contents: write # create the release and upload assets
+  id-token: write # npm provenance
+
+env:
+  # Pinned so every platform's binary embeds the same runtime, rather than
+  # whatever each runner image happens to ship.
+  NODE_VERSION: "22"
+
+jobs:
+  binaries:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true # a partial matrix would render manifests with missing hashes
+      matrix:
+        include:
+          - target: darwin_arm64
+            runner: macos-14
+          - target: darwin_amd64
+            runner: macos-13
+          - target: linux_amd64
+            runner: ubuntu-latest
+          - target: linux_arm64
+            runner: ubuntu-24.04-arm
+          - target: windows_amd64
+            runner: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build (tsc + JSON Schema)
+        run: npm run build
+
+      - name: Build the standalone binary
+        run: node scripts/build-binary.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: naijacloud_${{ matrix.target }}
+          path: |
+            dist-bin/*.tar.gz
+            dist-bin/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: publish
+    needs: binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - run: npm ci
+
+      - name: Resolve the version
+        id: version
+        run: |
+          version="${{ inputs.version }}"
+          if [ -z "$version" ]; then version="$(node -p 'require("./package.json").version')"; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$version"
+
+      - name: Fail if the tag and package.json disagree
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          pkg="${{ steps.version.outputs.version }}"
+          test "$tag" = "$pkg" || {
+            echo "Tag v$tag does not match package.json $pkg — bump one of them." >&2
+            exit 1
+          }
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-bin
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist-bin
+        run: |
+          sha256sum *.tar.gz *.zip > "naijacloud_${{ steps.version.outputs.version }}_checksums.txt"
+          cat "naijacloud_${{ steps.version.outputs.version }}_checksums.txt"
+
+      # The .deb and .rpm are built here rather than on the matrix runners:
+      # nfpm reads an already-built binary, so one Linux job covers both arches.
+      - name: Unpack the Linux binaries for nfpm
+        working-directory: dist-bin
+        run: |
+          for arch in amd64 arm64; do
+            archive="naijacloud_${{ steps.version.outputs.version }}_linux_${arch}.tar.gz"
+            dir="naijacloud_${{ steps.version.outputs.version }}_linux_${arch}"
+            mkdir -p "$dir" && tar -xzf "$archive" -C "$dir"
+          done
+
+      - name: Install nfpm
+        run: |
+          curl -fsSL https://github.com/goreleaser/nfpm/releases/download/v2.43.0/nfpm_2.43.0_Linux_x86_64.tar.gz \
+            | tar -xz -C /usr/local/bin nfpm
+
+      - name: Build .deb and .rpm
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist-pkg
+          for arch in amd64 arm64; do
+            ARCH="$arch" nfpm package -f packaging/nfpm.yaml -p deb -t dist-pkg/
+            ARCH="$arch" nfpm package -f packaging/nfpm.yaml -p rpm -t dist-pkg/
+          done
+          ls -la dist-pkg
+
+      - name: Render the Homebrew / Scoop / WinGet manifests
+        run: |
+          node scripts/render-packaging.mjs \
+            --version "${{ steps.version.outputs.version }}" \
+            --checksums "dist-bin/naijacloud_${{ steps.version.outputs.version }}_checksums.txt"
+          tar -czf "dist-bin/naijacloud_${{ steps.version.outputs.version }}_manifests.tar.gz" -C dist-packaging .
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            --title "v${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            dist-bin/*.tar.gz dist-bin/*.zip dist-bin/*checksums.txt dist-pkg/*
+
+      - name: Publish to npm
+        if: ${{ env.NPM_TOKEN != '' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
+
+      # Downstream repositories are updated only when their tokens exist, so a
+      # fork or a first release without them still completes.
+      - name: Update the Homebrew tap
+        if: ${{ env.TAP_TOKEN != '' }}
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/naijacloud/homebrew-tap.git" tap
+          cp dist-packaging/homebrew/naijacloud.rb tap/Formula/naijacloud.rb
+          cd tap
+          git config user.name "naijacloud-bot"
+          git config user.email "bot@naijacloud.com"
+          git commit -am "naijacloud ${VERSION}" && git push
+
+      - name: Update the Scoop bucket
+        if: ${{ env.TAP_TOKEN != '' }}
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/naijacloud/scoop-bucket.git" bucket
+          cp dist-packaging/scoop/naijacloud.json bucket/bucket/naijacloud.json
+          cd bucket
+          git config user.name "naijacloud-bot"
+          git config user.email "bot@naijacloud.com"
+          git commit -am "naijacloud ${VERSION}" && git push
+
+  # WinGet is a pull request into microsoft/winget-pkgs, so it is its own job:
+  # it needs a fork and a PAT, and a rejected PR should not fail the release.
+  winget:
+    name: winget
+    needs: release
+    runs-on: windows-latest
+    if: ${{ github.event_name == 'push' }}
+    continue-on-error: true
+    steps:
+      - uses: vedantmgoyal9/winget-releaser@main
+        with:
+          identifier: NaijaCloud.CLI
+          installers-regex: '_windows_amd64\.zip$'
+          token: ${{ secrets.WINGET_TOKEN }}

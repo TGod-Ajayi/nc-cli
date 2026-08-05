@@ -1,0 +1,57 @@
+# Typecheck, build, and prove the standalone binary still works.
+#
+# The binary build runs on every platform the release ships, because that is
+# where packaging breaks first — a bundling or code-signing problem is invisible
+# to `tsc` and only shows up when the executable is assembled.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-14, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: The generated schema must match the committed one
+        shell: bash
+        run: |
+          git diff --exit-code -- schema/naijacloud.schema.json || {
+            echo "schema/naijacloud.schema.json is stale — run 'npm run build' and commit it." >&2
+            exit 1
+          }
+
+      - name: Build the standalone binary
+        run: node scripts/build-binary.mjs
+
+      - name: Smoke-test the binary
+        shell: bash
+        run: |
+          binary=$(find dist-bin -name 'naijacloud' -o -name 'naijacloud.exe' | head -1)
+          "$binary" --version
+          "$binary" schema > /dev/null
+          # `whoami` exits non-zero when logged out, which is the state here.
+          "$binary" whoami || true

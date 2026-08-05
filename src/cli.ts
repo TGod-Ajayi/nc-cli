@@ -9,8 +9,9 @@
 
 import process from "node:process";
 
-import { login, logout, whoami, TOKEN_ENV_VAR } from "./auth.js";
-import { CLIENT_VERSION, DEFAULT_API_BASE_URL } from "./api-client.js";
+import { CLIENT_VERSION, DEFAULT_API_BASE_URL } from "./api/index.js";
+import { TOKEN_ENV_VAR } from "./auth/credentials.js";
+import { login, logout, whoami } from "./commands/auth.js";
 
 const USAGE = `naijacloud — CLI and MCP server for NaijaCloud hosting
 
@@ -18,6 +19,8 @@ Usage
   naijacloud login [options]   Authenticate and store credentials (mode 0600)
   naijacloud logout            Delete stored credentials
   naijacloud whoami            Show the authenticated account
+  naijacloud deploy [dir]      Build, upload and release a static site
+  naijacloud schema [--write]  Print the naijacloud.json JSON Schema
   naijacloud mcp               Run the MCP server over stdio
   naijacloud --help            Show this message
   naijacloud --version         Show the version
@@ -27,10 +30,29 @@ Login options
   --password <password>        Password, instead of being prompted
   --token <token>              Store an access token you already have (CI)
 
+Deploy options
+  --name <name>                Site name (first deploy only)
+  --output <dir>               Directory to deploy, overriding the manifest
+  --index <file>               Entry file, when it is not index.html
+  --spa / --no-spa             Serve the entry file for unmatched paths
+  --prebuilt                   Skip the manifest's build command
+  --new                        Create a new site, ignoring the manifest's serviceId
+  --yes                        Accept detected defaults instead of prompting
+  --no-wait                    Return once queued, without waiting for the build
+  --json                       Machine-readable result on stdout
+
+  Configuration is read from naijacloud.json; the first deploy asks for what
+  it needs and writes the file, so later runs take no arguments at all.
+
+Schema options
+  --write [path]               Write the schema (default .naijacloud/schema.json)
+
 Environment
-  ${TOKEN_ENV_VAR}          Access token; overrides the stored credentials
+  ${TOKEN_ENV_VAR}            Access token; overrides the stored credentials
   HOSTING_API_BASE_URL         API base URL (default ${DEFAULT_API_BASE_URL})
   HOSTING_API_TIMEOUT_MS       Per-request timeout in ms (default 30000)
+  HOSTING_UPLOAD_TIMEOUT_MS    Upload timeout in ms (default 600000)
+  NAIJACLOUD_DEPLOY_TIMEOUT_MS Deploy wait timeout in ms (default 900000)
 
 Register with Claude Code
   claude mcp add --transport stdio naijacloud -- naijacloud mcp
@@ -38,13 +60,31 @@ Register with Claude Code
 
 const VERSION = CLIENT_VERSION;
 
-/** Minimal `--flag value` / `--flag=value` parser for the login options. */
-function parseFlags(args: string[]): Map<string, string> {
+interface ParsedArgs {
+  flags: Map<string, string>;
+  /** Arguments that are not flags or flag values, in order. */
+  positionals: string[];
+}
+
+/**
+ * Minimal `--flag value` / `--flag=value` parser.
+ *
+ * `booleans` names the flags that take no value, so `naijacloud deploy --spa
+ * dist` keeps `dist` as a positional instead of swallowing it as the value of
+ * `--spa`.
+ */
+function parseArgs(args: string[], booleans: ReadonlySet<string> = new Set()): ParsedArgs {
   const flags = new Map<string, string>();
+  const positionals: string[] = [];
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
-    if (arg === undefined || !arg.startsWith("--")) continue;
+    if (arg === undefined) continue;
+
+    if (!arg.startsWith("--")) {
+      positionals.push(arg);
+      continue;
+    }
 
     const equals = arg.indexOf("=");
     if (equals !== -1) {
@@ -52,16 +92,39 @@ function parseFlags(args: string[]): Map<string, string> {
       continue;
     }
 
+    const name = arg.slice(2);
     const next = args[index + 1];
-    if (next !== undefined && !next.startsWith("--")) {
-      flags.set(arg.slice(2), next);
+    if (!booleans.has(name) && next !== undefined && !next.startsWith("--")) {
+      flags.set(name, next);
       index += 1;
     } else {
-      flags.set(arg.slice(2), "");
+      flags.set(name, "");
     }
   }
 
-  return flags;
+  return { flags, positionals };
+}
+
+/** Flags with no value, so the parser leaves the following token alone. */
+const DEPLOY_BOOLEANS = new Set([
+  "spa",
+  "no-spa",
+  "prebuilt",
+  "new",
+  "yes",
+  "wait",
+  "no-wait",
+  "json",
+]);
+
+/**
+ * Reads a `--x` / `--no-x` pair as a tri-state: explicitly on, explicitly off,
+ * or unspecified so a lower-priority source (manifest, detection) decides.
+ */
+function tristate(flags: Map<string, string>, name: string): boolean | undefined {
+  if (flags.has(`no-${name}`)) return false;
+  if (flags.has(name)) return true;
+  return undefined;
 }
 
 async function main(): Promise<void> {
@@ -80,7 +143,7 @@ async function main(): Promise<void> {
 
   switch (command) {
     case "login": {
-      const flags = parseFlags(rest);
+      const { flags } = parseArgs(rest);
       const options: Parameters<typeof login>[0] = {};
 
       const email = flags.get("email");
@@ -102,9 +165,37 @@ async function main(): Promise<void> {
       await whoami();
       return;
 
+    case "deploy": {
+      const { flags, positionals } = parseArgs(rest, DEPLOY_BOOLEANS);
+      // Imported lazily so the auth commands never pay to load zod and the
+      // archive machinery.
+      const { deploy } = await import("./commands/deploy.js");
+
+      await deploy({
+        dir: positionals[0],
+        name: flags.get("name") || undefined,
+        output: flags.get("output") || undefined,
+        index: flags.get("index") || undefined,
+        spa: tristate(flags, "spa"),
+        prebuilt: flags.has("prebuilt"),
+        createNew: flags.has("new"),
+        yes: flags.has("yes"),
+        json: flags.has("json"),
+        wait: tristate(flags, "wait") ?? true,
+      });
+      return;
+    }
+
+    case "schema": {
+      const { flags } = parseArgs(rest);
+      const { schemaCommand } = await import("./commands/schema.js");
+      schemaCommand({ write: flags.get("write") });
+      return;
+    }
+
     case "mcp": {
       // Imported lazily so `login`/`logout`/`whoami` never pay to load the MCP SDK.
-      const { startMcpServer } = await import("./mcp-server.js");
+      const { startMcpServer } = await import("./mcp/server.js");
       await startMcpServer();
       // The stdio transport keeps the process alive; returning here is correct.
       return;

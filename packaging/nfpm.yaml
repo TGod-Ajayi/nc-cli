@@ -1,0 +1,51 @@
+# nfpm builds the .deb and .rpm from the same standalone binary the other
+# channels ship, with no dpkg or rpmbuild on the machine:
+#
+#   VERSION=0.1.0 ARCH=amd64 nfpm package -f packaging/nfpm.yaml -p deb -t dist-pkg/
+#   VERSION=0.1.0 ARCH=amd64 nfpm package -f packaging/nfpm.yaml -p rpm -t dist-pkg/
+#
+# `arch` uses Go/Debian naming (amd64, arm64), which is what scripts/build-binary.mjs
+# already emits. nfpm translates it to the RPM spelling (x86_64, aarch64) itself.
+#
+# These packages carry no dependency on nodejs: the binary embeds its own
+# runtime, so it installs cleanly on a machine that has never seen Node.
+
+name: naijacloud
+version: ${VERSION}
+arch: ${ARCH}
+platform: linux
+
+maintainer: NaijaCloud <support@naijacloud.com>
+description: |
+  Command-line interface for NaijaCloud hosting.
+  Deploy static sites, manage projects, services, deployments, domains and
+  environment variables, and serve the same operations to AI agents over MCP.
+vendor: NaijaCloud
+homepage: https://naijacloud.com
+license: MIT
+section: utils
+priority: optional
+
+contents:
+  - src: ./dist-bin/naijacloud_${VERSION}_linux_${ARCH}/naijacloud
+    dst: /usr/bin/naijacloud
+    file_info:
+      mode: 0755
+
+  - src: ./README.md
+    dst: /usr/share/doc/naijacloud/README.md
+    file_info:
+      mode: 0644
+
+  - src: ./schema/naijacloud.schema.json
+    dst: /usr/share/naijacloud/naijacloud.schema.json
+    file_info:
+      mode: 0644
+
+rpm:
+  # Unsigned by default; CI passes a key via NFPM_NAIJACLOUD_PASSPHRASE and
+  # `signature.key_file` when publishing to the yum repository.
+  compression: gzip
+
+deb:
+  compression: gzip

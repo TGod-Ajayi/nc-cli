@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+#
+# The release ships a .zip holding a single .exe, so this is a `zip` installer
+# with a `portable` nested installer: WinGet unpacks it and puts `naijacloud` on
+# the PATH via an app-execution alias, with no MSI and no elevation.
+PackageIdentifier: NaijaCloud.CLI
+PackageVersion: {{VERSION}}
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: naijacloud.exe
+    PortableCommandAlias: naijacloud
+InstallModes:
+  - silent
+  - silentWithProgress
+UpgradeBehavior: install
+ReleaseDate: {{RELEASE_DATE}}
+Installers:
+  - Architecture: x64
+    InstallerUrl: {{RELEASE_BASE}}/naijacloud_{{VERSION}}_windows_amd64.zip
+    InstallerSha256: {{SHA256_WINDOWS_AMD64}}
+ManifestType: installer
+ManifestVersion: 1.6.0
