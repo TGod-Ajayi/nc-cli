@@ -48,10 +48,12 @@ Nothing below is created by the release workflow; each has to exist first.
 
 ### Homebrew
 
-Create **`TGod-Ajayi/homebrew-tap`** with a `Formula/` directory. The workflow
-commits [the rendered formula](templates/homebrew/naijacloud.rb) into it on every
-release, so `brew install TGod-Ajayi/tap/naijacloud` works immediately, and
-`brew install naijacloud` once the tap is tapped.
+**[`Pherwerz/homebrew-tap`](https://github.com/Pherwerz/homebrew-tap)** exists,
+with a `Formula/` directory. The workflow commits
+[the rendered formula](templates/homebrew/naijacloud.rb) into it on every
+release, so `brew install Pherwerz/tap/naijacloud` works, and
+`brew install naijacloud` once the tap is tapped. It still needs a `TAP_TOKEN`
+secret with write access to that repository, or the step skips.
 
 Homebrew core (plain `brew install naijacloud`, no tap) has its own bar —
 notability, a stable release history, no `HEAD`-only versions — and is worth
@@ -164,10 +166,11 @@ checksum is missing.
   not requiring Node on the target machine. `--minify` saves about 1 MB and
   costs readable stack traces, so it is off. A Go or Rust rewrite is the only
   way substantially below this.
-- **The tap and the bucket do not exist yet.** The source repository is
-  `TGod-Ajayi/nc-cli` — override it with `NAIJACLOUD_REPO_SLUG` — but
-  `TGod-Ajayi/homebrew-tap` and `TGod-Ajayi/scoop-bucket` still have to be
-  created by hand; their URLs are literals in the release workflow.
+- **`TAP_TOKEN` is not set,** so the Homebrew step skips even though
+  `Pherwerz/homebrew-tap` now exists. It needs a PAT with write access to that
+  repository. The tap URL is a literal in the release workflow.
+- **The Scoop bucket does not exist.** `TGod-Ajayi/scoop-bucket` still has to be
+  created by hand, and its URL is likewise a literal in the workflow.
 - **The install script has no host.** The README documents
   `curl -fsSL https://your-domain.example/install.sh | sh`, which is still a
   placeholder. `https://raw.githubusercontent.com/TGod-Ajayi/nc-cli/main/install.sh`

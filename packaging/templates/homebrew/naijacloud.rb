@@ -1,5 +1,5 @@
 # Rendered by scripts/render-packaging.mjs and committed to the tap repository
-# (TGod-Ajayi/homebrew-tap), which is what makes `brew install naijacloud` work.
+# (Pherwerz/homebrew-tap), which is what makes `brew install naijacloud` work.
 #
 # Binary-only formula: the bottle IS the release archive, so Homebrew downloads
 # and unpacks rather than compiling anything.
