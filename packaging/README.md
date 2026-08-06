@@ -77,9 +77,11 @@ binary carries its own runtime.
 
 ### Scoop
 
-Create **`TGod-Ajayi/scoop-bucket`** with a `bucket/` directory. The rendered
+**[`Pherwerz/scoop-bucket`](https://github.com/Pherwerz/scoop-bucket)** exists,
+with a `bucket/` directory. The rendered
 [manifest](templates/scoop/naijacloud.json) carries `checkver` and `autoupdate`,
 so Scoop's own bots can pick up later releases even if a workflow run is missed.
+It shares the `TAP_TOKEN` secret with the Homebrew step.
 
 ### WinGet
 
@@ -166,11 +168,9 @@ checksum is missing.
   not requiring Node on the target machine. `--minify` saves about 1 MB and
   costs readable stack traces, so it is off. A Go or Rust rewrite is the only
   way substantially below this.
-- **`TAP_TOKEN` is not set,** so the Homebrew step skips even though
-  `Pherwerz/homebrew-tap` now exists. It needs a PAT with write access to that
-  repository. The tap URL is a literal in the release workflow.
-- **The Scoop bucket does not exist.** `TGod-Ajayi/scoop-bucket` still has to be
-  created by hand, and its URL is likewise a literal in the workflow.
+- **`TAP_TOKEN` is not set,** so the Homebrew and Scoop steps both skip even
+  though `Pherwerz/homebrew-tap` and `Pherwerz/scoop-bucket` now exist. It needs
+  one PAT with write access to both. Their URLs are literals in the workflow.
 - **The install script has no host.** The README documents
   `curl -fsSL https://your-domain.example/install.sh | sh`, which is still a
   placeholder. `https://raw.githubusercontent.com/TGod-Ajayi/nc-cli/main/install.sh`

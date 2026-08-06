@@ -243,7 +243,8 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/TGod-Ajayi/scoop-bucket.git" bucket
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/Pherwerz/scoop-bucket.git" bucket
+          mkdir -p bucket/bucket
           cp dist-packaging/scoop/naijacloud.json bucket/bucket/naijacloud.json
           cd bucket
           git config user.name "naijacloud-bot"
