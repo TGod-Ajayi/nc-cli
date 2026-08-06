@@ -2,15 +2,17 @@
 #
 # Trigger: pushing a `v*` tag (or running it by hand with a version input).
 #
-#   tag ──> build matrix (5 platforms) ──> release ──> npm publish
-#                                            │
-#                                            ├─> .deb / .rpm attached
-#                                            └─> rendered manifests for
-#                                                Homebrew / Scoop / WinGet
+#   tag ──> binaries (1 runner, 5 targets) ──> smoke ──> release ──> npm publish
+#                                                          │
+#                                                          ├─> .deb / .rpm
+#                                                          └─> rendered manifests
+#                                                              for Homebrew /
+#                                                              Scoop / WinGet
 #
-# Each platform is built on its own runner because Node's single-executable
-# support cannot cross-compile: injecting the blob requires a `node` binary for
-# the target platform.
+# `bun build --compile` cross-compiles, so every platform's binary is produced
+# on one Linux runner in seconds. Because nothing can execute a cross-compiled
+# artifact on the machine that built it, the `smoke` job runs each one on its
+# native runner before the release is allowed to proceed.
 
 name: release
 
@@ -31,13 +33,52 @@ env:
   # Pinned so every platform's binary embeds the same runtime, rather than
   # whatever each runner image happens to ship.
   NODE_VERSION: "22"
+  BUN_VERSION: "1.3.14"
 
 jobs:
   binaries:
-    name: ${{ matrix.target }}
+    name: binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - run: npm ci
+
+      - name: Build (tsc + JSON Schema)
+        run: npm run build
+
+      - name: Cross-compile every platform
+        run: node scripts/build-binary.mjs --target all
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: |
+            dist-bin/*.tar.gz
+            dist-bin/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  # Nothing on the build runner can execute a cross-compiled artifact, so each
+  # one is unpacked and run on its own platform here. A binary that will not
+  # start — an unsigned Mach-O, a bad arch — fails the release before any
+  # package manager can point at it.
+  smoke:
+    name: smoke ${{ matrix.target }}
+    needs: binaries
     runs-on: ${{ matrix.runner }}
     strategy:
-      fail-fast: true # a partial matrix would render manifests with missing hashes
+      fail-fast: true
       matrix:
         include:
           - target: darwin_arm64
@@ -52,33 +93,26 @@ jobs:
             runner: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - uses: actions/download-artifact@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
+          name: binaries
+          path: dist-bin
 
-      - run: npm ci
-
-      - name: Build (tsc + JSON Schema)
-        run: npm run build
-
-      - name: Build the standalone binary
-        run: node scripts/build-binary.mjs
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: naijacloud_${{ matrix.target }}
-          path: |
-            dist-bin/*.tar.gz
-            dist-bin/*.zip
-          if-no-files-found: error
-          retention-days: 7
+      - name: Run --version
+        shell: bash
+        run: |
+          cd dist-bin
+          if [ "${{ matrix.target }}" = "windows_amd64" ]; then
+            unzip -q "naijacloud_"*"_${{ matrix.target }}.zip"
+            ./naijacloud.exe --version
+          else
+            tar -xzf "naijacloud_"*"_${{ matrix.target }}.tar.gz"
+            ./naijacloud --version
+          fi
 
   release:
     name: publish
-    needs: binaries
+    needs: [binaries, smoke]
     runs-on: ubuntu-latest
 
     steps:

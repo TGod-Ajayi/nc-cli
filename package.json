@@ -27,8 +27,9 @@
     "build": "tsc && chmod +x build/cli.js && node build/scripts/write-schema.js",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf build dist-bin dist-packaging dist-pkg",
-    "//binary": "Standalone executable for Homebrew / apt / yum / Scoop / WinGet. Builds for the host platform only — Node's SEA cannot cross-compile.",
+    "//binary": "Standalone executable for Homebrew / apt / yum / Scoop / WinGet, built with `bun build --compile`. Defaults to the host platform; `binary:all` cross-compiles every target from any machine.",
     "binary": "npm run build && node scripts/build-binary.mjs",
+    "binary:all": "npm run build && node scripts/build-binary.mjs --target all",
     "packaging": "node scripts/render-packaging.mjs",
     "//prepare": "Runs on `npm install` and on `npm install -g .`, so a fresh clone gets a usable build/cli.js without a separate step.",
     "prepare": "npm run build",
@@ -50,8 +51,6 @@
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
-    "esbuild": "^0.28.1",
-    "postject": "^1.0.0-alpha.6",
     "typescript": "^7.0.2"
   }
 }
