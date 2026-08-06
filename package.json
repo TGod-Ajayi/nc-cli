@@ -27,13 +27,15 @@
     "build": "tsc && chmod +x build/cli.js && node build/scripts/write-schema.js",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf build dist-bin dist-packaging dist-pkg",
+    "//clean:build": "Only build/, which is all the npm tarball contains. `clean` also removes the release artifacts, and prepublishOnly must not do that — the Homebrew and Scoop steps run after `npm publish` and read dist-packaging/.",
+    "clean:build": "rm -rf build",
     "//binary": "Standalone executable for Homebrew / apt / yum / Scoop / WinGet, built with `bun build --compile`. Defaults to the host platform; `binary:all` cross-compiles every target from any machine.",
     "binary": "npm run build && node scripts/build-binary.mjs",
     "binary:all": "npm run build && node scripts/build-binary.mjs --target all",
     "packaging": "node scripts/render-packaging.mjs",
     "//prepare": "Runs on `npm install` and on `npm install -g .`, so a fresh clone gets a usable build/cli.js without a separate step.",
     "prepare": "npm run build",
-    "prepublishOnly": "npm run clean && npm run build",
+    "prepublishOnly": "npm run clean:build && npm run build",
     "inspector": "npx @modelcontextprotocol/inspector node build/cli.js mcp"
   },
   "keywords": [
