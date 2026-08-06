@@ -188,9 +188,17 @@ jobs:
         run: |
           mkdir -p dist-pkg
           for arch in amd64 arm64; do
+            # nfpm does not expand ${VERSION}/${ARCH} inside contents[].src, so
+            # this architecture's binary is staged at the fixed path the config
+            # names before nfpm runs.
+            rm -rf dist-pkg/stage && mkdir -p dist-pkg/stage
+            cp "dist-bin/naijacloud_${VERSION}_linux_${arch}/naijacloud" dist-pkg/stage/naijacloud
             ARCH="$arch" nfpm package -f packaging/nfpm.yaml -p deb -t dist-pkg/
             ARCH="$arch" nfpm package -f packaging/nfpm.yaml -p rpm -t dist-pkg/
           done
+          # Removed so the staging copy is not swept into the release assets by
+          # the dist-pkg/* glob below.
+          rm -rf dist-pkg/stage
           ls -la dist-pkg
 
       - name: Render the Homebrew / Scoop / WinGet manifests
