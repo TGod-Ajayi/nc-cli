@@ -29,7 +29,7 @@ function flag(name, fallback) {
 
 const version = flag("version", pkg.version);
 const outDir = resolve(root, flag("out", "dist-packaging"));
-const repoSlug = process.env["NAIJACLOUD_REPO_SLUG"] ?? "naijacloud/naijacloud-cli";
+const repoSlug = process.env["NAIJACLOUD_REPO_SLUG"] ?? "TGod-Ajayi/nc-cli";
 const releaseBase = `https://github.com/${repoSlug}/releases/download/v${version}`;
 
 /* -------------------------------------------------------------------------- */

@@ -51,7 +51,7 @@ echo -e "[naijacloud]\nname=naijacloud\nbaseurl=https://packages.naijacloud.com/
 sudo yum install naijacloud
 ```
 
-Or install a single package straight from a [release](https://github.com/naijacloud/naijacloud-cli/releases), with no repository:
+Or install a single package straight from a [release](https://github.com/TGod-Ajayi/nc-cli/releases), with no repository:
 
 ```bash
 sudo dpkg -i naijacloud_0.1.0_amd64.deb        # Debian, Ubuntu
@@ -95,7 +95,7 @@ Override any of it with environment variables:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `NAIJACLOUD_VERSION` | `latest` | Release to install, e.g. `0.2.0` |
-| `NAIJACLOUD_REPO_SLUG` | `naijacloud/naijacloud-cli` | GitHub `owner/repo` to install from |
+| `NAIJACLOUD_REPO_SLUG` | `TGod-Ajayi/nc-cli` | GitHub `owner/repo` to install from |
 | `NAIJACLOUD_BASE_URL` | the GitHub release | Mirror or internal artifact host |
 | `NAIJACLOUD_HOME` | `~/.local/share/naijacloud` | Where the binary lives |
 | `NAIJACLOUD_BIN_DIR` | `~/.local/bin` | Where the symlink goes |

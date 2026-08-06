@@ -179,7 +179,7 @@ jobs:
           TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/naijacloud/homebrew-tap.git" tap
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/TGod-Ajayi/homebrew-tap.git" tap
           cp dist-packaging/homebrew/naijacloud.rb tap/Formula/naijacloud.rb
           cd tap
           git config user.name "naijacloud-bot"
@@ -192,7 +192,7 @@ jobs:
           TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          git clone "https://x-access-token:${TAP_TOKEN}@github.com/naijacloud/scoop-bucket.git" bucket
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/TGod-Ajayi/scoop-bucket.git" bucket
           cp dist-packaging/scoop/naijacloud.json bucket/bucket/naijacloud.json
           cd bucket
           git config user.name "naijacloud-bot"

@@ -29,7 +29,7 @@
 
 set -eu
 
-REPO_SLUG="${NAIJACLOUD_REPO_SLUG:-naijacloud/naijacloud-cli}"
+REPO_SLUG="${NAIJACLOUD_REPO_SLUG:-TGod-Ajayi/nc-cli}"
 VERSION="${NAIJACLOUD_VERSION:-latest}"
 INSTALL_DIR="${NAIJACLOUD_HOME:-$HOME/.local/share/naijacloud}"
 BIN_DIR="${NAIJACLOUD_BIN_DIR:-$HOME/.local/bin}"

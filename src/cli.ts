@@ -19,6 +19,7 @@ Usage
   naijacloud login [options]   Authenticate and store credentials (mode 0600)
   naijacloud logout            Delete stored credentials
   naijacloud whoami            Show the authenticated account
+  naijacloud init [dir]        Write a naijacloud.json, without deploying
   naijacloud deploy [dir]      Build, upload and release a static site
   naijacloud schema [--write]  Print the naijacloud.json JSON Schema
   naijacloud mcp               Run the MCP server over stdio
@@ -29,6 +30,12 @@ Login options
   --email <email>              Email, instead of being prompted
   --password <password>        Password, instead of being prompted
   --token <token>              Store an access token you already have (CI)
+
+Init options
+  --name/--output/--index      Manifest values, instead of being prompted
+  --spa / --no-spa             Serve the entry file for unmatched paths
+  --yes                        Accept detected defaults instead of prompting
+  --force                      Rewrite an existing naijacloud.json
 
 Deploy options
   --name <name>                Site name (first deploy only)
@@ -106,6 +113,8 @@ function parseArgs(args: string[], booleans: ReadonlySet<string> = new Set()): P
 }
 
 /** Flags with no value, so the parser leaves the following token alone. */
+const INIT_BOOLEANS = new Set(["spa", "no-spa", "yes", "force", "json"]);
+
 const DEPLOY_BOOLEANS = new Set([
   "spa",
   "no-spa",
@@ -164,6 +173,23 @@ async function main(): Promise<void> {
     case "whoami":
       await whoami();
       return;
+
+    case "init": {
+      const { flags, positionals } = parseArgs(rest, INIT_BOOLEANS);
+      const { init } = await import("./commands/init.js");
+
+      await init({
+        dir: positionals[0],
+        name: flags.get("name") || undefined,
+        output: flags.get("output") || undefined,
+        index: flags.get("index") || undefined,
+        spa: tristate(flags, "spa"),
+        yes: flags.has("yes"),
+        force: flags.has("force"),
+        json: flags.has("json"),
+      });
+      return;
+    }
 
     case "deploy": {
       const { flags, positionals } = parseArgs(rest, DEPLOY_BOOLEANS);

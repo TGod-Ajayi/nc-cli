@@ -45,9 +45,9 @@ Nothing below is created by the release workflow; each has to exist first.
 
 ### Homebrew
 
-Create **`naijacloud/homebrew-tap`** with a `Formula/` directory. The workflow
+Create **`TGod-Ajayi/homebrew-tap`** with a `Formula/` directory. The workflow
 commits [the rendered formula](templates/homebrew/naijacloud.rb) into it on every
-release, so `brew install naijacloud/tap/naijacloud` works immediately, and
+release, so `brew install TGod-Ajayi/tap/naijacloud` works immediately, and
 `brew install naijacloud` once the tap is tapped.
 
 Homebrew core (plain `brew install naijacloud`, no tap) has its own bar —
@@ -72,7 +72,7 @@ binary carries its own runtime.
 
 ### Scoop
 
-Create **`naijacloud/scoop-bucket`** with a `bucket/` directory. The rendered
+Create **`TGod-Ajayi/scoop-bucket`** with a `bucket/` directory. The rendered
 [manifest](templates/scoop/naijacloud.json) carries `checkver` and `autoupdate`,
 so Scoop's own bots can pick up later releases even if a workflow run is missed.
 
@@ -157,8 +157,13 @@ checksum is missing.
   Node runtime, and it is the price of not requiring Node on the target machine.
   A Go or Rust rewrite is the only way substantially below this; `--minify` and
   dropping the code cache would save single-digit megabytes.
-- **Placeholder URLs.** `naijacloud/naijacloud-cli`, the tap and the bucket are
-  assumed names. Override the first with `NAIJACLOUD_REPO_SLUG`; the tap and
-  bucket URLs are literals in the release workflow.
-- **`ubuntu-24.04-arm`** is free for public repositories only; a private repo
-  needs a paid larger runner or a QEMU cross-build for `linux_arm64`.
+- **The tap and the bucket do not exist yet.** The source repository is
+  `TGod-Ajayi/nc-cli` — override it with `NAIJACLOUD_REPO_SLUG` — but
+  `TGod-Ajayi/homebrew-tap` and `TGod-Ajayi/scoop-bucket` still have to be
+  created by hand; their URLs are literals in the release workflow.
+- **The repository is private.** Every install path here reads from public
+  GitHub release assets, so none of them work until it is made public: the
+  install script's unauthenticated call to `api.github.com/repos/.../releases/latest`
+  404s, and Homebrew, Scoop and WinGet cannot fetch the archives. `ubuntu-24.04-arm`
+  is also free for public repositories only; a private repo needs a paid larger
+  runner or a QEMU cross-build for `linux_arm64`.

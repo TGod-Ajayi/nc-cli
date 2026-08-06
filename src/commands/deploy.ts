@@ -41,12 +41,12 @@ import {
   detectLocal,
   findManifest,
   readManifest,
-  sanitizeName,
   selectFiles,
   writeManifest,
 } from "../deploy-static/manifest.js";
 import type { Manifest } from "../deploy-static/manifest.js";
-import { isInteractive, promptWithDefault, promptYesNo, requireTty, write } from "../terminal.js";
+import { askManifestBasics } from "../deploy-static/configure.js";
+import { isInteractive, requireTty, write } from "../terminal.js";
 import { writeLocalSchema } from "./schema.js";
 import { createZip } from "../deploy-static/zip.js";
 
@@ -177,46 +177,23 @@ async function resolveConfig(options: DeployOptions): Promise<ResolvedConfig> {
     );
   }
 
-  if (name === undefined) {
-    name = interactive
-      ? sanitizeName(await promptWithDefault("  Site name        ", detected.name))
-      : detected.name;
-  }
+  // The same questions `naijacloud init` asks — a first deploy is an init that
+  // also ships the site. A build command already in the manifest is settled; an
+  // explicit path argument means the caller handed us built output, so there is
+  // nothing to build either.
+  const answers = await askManifestBasics(detected, {
+    interactive,
+    name,
+    build,
+    output,
+    spa,
+    askBuild: loaded === null && positional === undefined,
+  });
 
-  // A build command already in the manifest is not up for discussion; only an
-  // inferred one is worth confirming.
-  let chosenBuild = build;
-  if (chosenBuild === undefined && loaded === null && positional === undefined) {
-    // A bare `naijacloud deploy` in a project directory should build first; an
-    // explicit path argument means the caller already has the output.
-    if (interactive && detected.build !== undefined) {
-      const answer = await promptWithDefault(
-        "  Build command    ",
-        detected.build,
-        "from package.json; 'none' to skip",
-      );
-      chosenBuild = answer === "none" || answer === "" ? undefined : answer;
-    } else {
-      chosenBuild = detected.build;
-    }
-  }
-
-  if (output === undefined) {
-    const fallback = detected.output ?? "dist";
-    output = interactive
-      ? await promptWithDefault("  Output directory ", fallback, detected.output ? "detected" : undefined)
-      : fallback;
-  }
-
-  if (spa === undefined) {
-    spa = interactive
-      ? await promptYesNo(
-          "  Single-page app? ",
-          detected.spa,
-          detected.framework ? `detected: ${detected.framework}` : undefined,
-        )
-      : detected.spa;
-  }
+  name = answers.name;
+  output = answers.output;
+  spa = answers.spa;
+  const chosenBuild = answers.build;
 
   if (interactive) write("\n");
 
