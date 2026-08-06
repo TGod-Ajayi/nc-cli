@@ -20,16 +20,16 @@ release proceeds.
 
 ## Channels
 
-| Channel | Command | Artifact | Needs |
-| --- | --- | --- | --- |
-| npm | `npm install -g naijacloud-cli` | `build/` (JS) | `NPM_TOKEN` |
-| npx | `npx naijacloud-cli login` | same | — |
-| Homebrew | `brew install naijacloud` | `*_darwin_*.tar.gz`, `*_linux_*.tar.gz` | a tap repo |
-| apt | `apt install naijacloud` | `.deb` | an apt repo + signing key |
-| yum/dnf | `yum install naijacloud` | `.rpm` | a yum repo + signing key |
-| Scoop | `scoop install naijacloud` | `*_windows_amd64.zip` | a bucket repo |
-| WinGet | `winget install NaijaCloud.CLI` | same `.zip` | a PR to winget-pkgs |
-| install.sh | `curl … \| sh` | the platform's archive | nothing |
+| Channel    | Command                         | Artifact                                | Needs                     |
+| ---------- | ------------------------------- | --------------------------------------- | ------------------------- |
+| npm        | `npm install -g naijacloud-cli` | `build/` (JS)                           | `NPM_TOKEN`               |
+| npx        | `npx naijacloud-cli login`      | same                                    | —                         |
+| Homebrew   | `brew install naijacloud`       | `*_darwin_*.tar.gz`, `*_linux_*.tar.gz` | a tap repo                |
+| apt        | `apt install naijacloud`        | `.deb`                                  | an apt repo + signing key |
+| yum/dnf    | `yum install naijacloud`        | `.rpm`                                  | a yum repo + signing key  |
+| Scoop      | `scoop install naijacloud`      | `*_windows_amd64.zip`                   | a bucket repo             |
+| WinGet     | `winget install NaijaCloud.CLI` | same `.zip`                             | a PR to winget-pkgs       |
+| install.sh | `curl … \| sh`                  | the platform's archive                  | nothing                   |
 
 Artifact names are fixed across all of them:
 
@@ -93,12 +93,12 @@ MSI to sign and no elevation prompt.
 
 ### Secrets the workflow reads
 
-| Secret | Used for | Missing means |
-| --- | --- | --- |
-| `NPM_TOKEN` | `npm publish --provenance` | npm step is skipped |
-| `TAP_TOKEN` | pushing to the tap and bucket repos | those steps are skipped |
-| `WINGET_TOKEN` | the winget-pkgs PR | that job fails, release survives |
-| `MACOS_SIGN_IDENTITY` | Developer ID signing | binaries are ad-hoc signed |
+| Secret                | Used for                            | Missing means                    |
+| --------------------- | ----------------------------------- | -------------------------------- |
+| `NPM_TOKEN`           | `npm publish --provenance`          | npm step is skipped              |
+| `TAP_TOKEN`           | pushing to the tap and bucket repos | those steps are skipped          |
+| `WINGET_TOKEN`        | the winget-pkgs PR                  | that job fails, release survives |
+| `MACOS_SIGN_IDENTITY` | Developer ID signing                | binaries are ad-hoc signed       |
 
 Steps are conditional on their secret existing, so a first release with none of
 them still produces a complete GitHub release.
