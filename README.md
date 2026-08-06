@@ -54,8 +54,8 @@ sudo yum install naijacloud
 Or install a single package straight from a [release](https://github.com/TGod-Ajayi/nc-cli/releases), with no repository:
 
 ```bash
-sudo dpkg -i naijacloud_0.1.1_amd64.deb        # Debian, Ubuntu
-sudo rpm -i naijacloud-0.1.1.x86_64.rpm        # RedHat, Fedora, CentOS
+sudo dpkg -i naijacloud_0.1.2_amd64.deb        # Debian, Ubuntu
+sudo rpm -i naijacloud-0.1.2.x86_64.rpm        # RedHat, Fedora, CentOS
 ```
 
 ### Windows
