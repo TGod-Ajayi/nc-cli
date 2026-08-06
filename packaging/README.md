@@ -28,7 +28,7 @@ release proceeds.
 | apt        | `apt install naijacloud`        | `.deb`                                  | an apt repo + signing key |
 | yum/dnf    | `yum install naijacloud`        | `.rpm`                                  | a yum repo + signing key  |
 | Scoop      | `scoop install naijacloud`      | `*_windows_amd64.zip`                   | a bucket repo             |
-| WinGet     | `winget install NaijaCloud.CLI` | same `.zip`                             | a PR to winget-pkgs       |
+| ~~WinGet~~ | ~~`winget install NaijaCloud.CLI`~~ | same `.zip` | **disabled** — see below |
 | install.sh | `curl … \| sh`                  | the platform's archive                  | nothing                   |
 
 Artifact names are fixed across all of them:
@@ -83,15 +83,27 @@ with a `bucket/` directory. The rendered
 so Scoop's own bots can pick up later releases even if a workflow run is missed.
 It shares the `TAP_TOKEN` secret with the Homebrew step.
 
-### WinGet
+### WinGet — disabled
 
-The [manifests](templates/winget) are submitted as a pull request to
-[microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs) — the `winget`
-job in the release workflow does this with `winget-releaser`, which needs a
-classic PAT (`public_repo`) stored as `WINGET_TOKEN` and a fork of winget-pkgs on
-that account. The first submission is reviewed by a human; later ones are usually
-automatic.
+The `winget` job is **commented out** in the release workflow, and the
+`winget install` line is commented out of the top-level README. Nothing is
+published to WinGet today.
 
+The [manifests](templates/winget) are still rendered on every release, so they
+stay valid and re-enabling is a matter of uncommenting. To turn it back on:
+
+1. Fork [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs) onto
+   the account that will own the token — `gh repo fork microsoft/winget-pkgs --clone=false`.
+2. Create a **classic** PAT with only the `public_repo` scope. Fine-grained
+   tokens cannot express what this needs: push to your fork *and* open a pull
+   request on a repository you do not own.
+3. `gh secret set WINGET_TOKEN`.
+4. Uncomment the job — and **pin the action to a tag or SHA rather than
+   `@main`**. It receives a classic PAT that can write to every public
+   repository on the account, so an unpinned third-party action is a real
+   supply-chain exposure.
+
+The first submission is reviewed by a human; later ones are usually automatic.
 The package ships as a `zip` with a `portable` nested installer, so there is no
 MSI to sign and no elevation prompt.
 
@@ -101,7 +113,6 @@ MSI to sign and no elevation prompt.
 | --------------------- | ----------------------------------- | -------------------------------- |
 | `NPM_TOKEN`           | `npm publish --provenance`          | npm step is skipped              |
 | `TAP_TOKEN`           | pushing to the tap and bucket repos | those steps are skipped          |
-| `WINGET_TOKEN`        | the winget-pkgs PR                  | that job fails, release survives |
 
 Steps are conditional on their secret existing, so a first release with none of
 them still produces a complete GitHub release.
@@ -135,8 +146,8 @@ a smooth install.
    cross-compiles five binaries on one runner, runs each on its native platform
    to confirm it starts and reports the expected version, generates checksums,
    builds `.deb`/`.rpm`, renders every manifest from the **published** checksums,
-   creates the GitHub release, publishes to npm, and updates the tap, the bucket
-   and winget-pkgs.
+   creates the GitHub release, publishes to npm, and updates the tap and the
+   bucket. WinGet is not submitted — that job is commented out.
 
 The workflow refuses to run if the tag and `package.json` disagree, and `smoke`
 is `fail-fast` on purpose: rendering a formula whose hashes point at artifacts

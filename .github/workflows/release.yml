@@ -251,17 +251,27 @@ jobs:
           git config user.email "bot@naijacloud.com"
           git commit -am "naijacloud ${VERSION}" && git push
 
-  # WinGet is a pull request into microsoft/winget-pkgs, so it is its own job:
-  # it needs a fork and a PAT, and a rejected PR should not fail the release.
-  winget:
-    name: winget
-    needs: release
-    runs-on: windows-latest
-    if: ${{ github.event_name == 'push' }}
-    continue-on-error: true
-    steps:
-      - uses: vedantmgoyal9/winget-releaser@main
-        with:
-          identifier: NaijaCloud.CLI
-          installers-regex: '_windows_amd64\.zip$'
-          token: ${{ secrets.WINGET_TOKEN }}
+  # WinGet is disabled for now. It is a pull request into microsoft/winget-pkgs,
+  # so it needs a fork of that repository and a classic PAT (`public_repo`) in
+  # WINGET_TOKEN — neither exists yet, and without them the job only ever
+  # contributes a red X to an otherwise clean release.
+  #
+  # The manifests under packaging/templates/winget are still rendered on every
+  # release, so they stay valid and this is a matter of uncommenting.
+  #
+  # Before re-enabling, pin the action to a tag or SHA rather than @main: it is
+  # handed a classic PAT that can write to every public repository on the
+  # account, so an unpinned third-party action is a real supply-chain exposure.
+  #
+  # winget:
+  #   name: winget
+  #   needs: release
+  #   runs-on: windows-latest
+  #   if: ${{ github.event_name == 'push' }}
+  #   continue-on-error: true
+  #   steps:
+  #     - uses: vedantmgoyal9/winget-releaser@main
+  #       with:
+  #         identifier: NaijaCloud.CLI
+  #         installers-regex: '_windows_amd64\.zip$'
+  #         token: ${{ secrets.WINGET_TOKEN }}

@@ -60,17 +60,25 @@ sudo rpm -i naijacloud-0.1.2.x86_64.rpm        # RedHat, Fedora, CentOS
 
 ### Windows
 
+**Scoop:**
+
+```powershell
+scoop bucket add pherwerz https://github.com/Pherwerz/scoop-bucket
+scoop install naijacloud
+```
+
+<!-- WinGet is not published yet — the release job that submits to winget-pkgs
+     is commented out until a fork and a WINGET_TOKEN exist. Restore this block
+     alongside the `winget` job in .github/workflows/release.yml.
+
 **WinGet:**
 
 ```powershell
 winget install NaijaCloud.CLI
 ```
+-->
 
-**Scoop:**
-
-```powershell
-scoop install naijacloud
-```
+Or use the [install script](#install-script-macos-linux) under WSL, or `npm install -g naijacloud-cli` with Node >= 20.
 
 ### Install script (macOS, Linux)
 
