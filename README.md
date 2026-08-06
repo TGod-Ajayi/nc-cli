@@ -75,14 +75,14 @@ scoop install naijacloud
 ### Install script (macOS, Linux)
 
 ```bash
-curl -fsSL https://your-domain.example/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/TGod-Ajayi/nc-cli/main/install.sh | sh
 ```
 
 > **Read the script before you pipe it to a shell.** Piping a URL straight into `sh` executes whatever that server returns, and a compromised or swapped host owns your account the moment you run it — this is a real supply-chain attack path, not a formality. Read it first:
 >
 > ```bash
-> curl -fsSL https://your-domain.example/install.sh | less   # inspect
-> curl -fsSL https://your-domain.example/install.sh -o install.sh
+> curl -fsSL https://raw.githubusercontent.com/TGod-Ajayi/nc-cli/main/install.sh | less   # inspect
+> curl -fsSL https://raw.githubusercontent.com/TGod-Ajayi/nc-cli/main/install.sh -o install.sh
 > sh install.sh                                              # then run
 > ```
 >
@@ -100,7 +100,7 @@ Override any of it with environment variables:
 | `NAIJACLOUD_HOME` | `~/.local/share/naijacloud` | Where the binary lives |
 | `NAIJACLOUD_BIN_DIR` | `~/.local/bin` | Where the symlink goes |
 
-> Every channel above except npm ships the same standalone executable, which embeds its own Node runtime — so `brew`, `apt`, `yum`, `scoop` and `winget` installs work on machines with no Node at all. Packaging details, and what a release runs, are in [`packaging/README.md`](packaging/README.md).
+> Every channel above except npm ships the same standalone executable, which embeds its own runtime — so `brew`, `apt`, `yum`, `scoop` and `winget` installs work on machines with no Node at all. Packaging details, and what a release runs, are in [`packaging/README.md`](packaging/README.md).
 
 ### From source (development)
 

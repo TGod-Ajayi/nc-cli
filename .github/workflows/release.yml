@@ -115,6 +115,13 @@ jobs:
     needs: [binaries, smoke]
     runs-on: ubuntu-latest
 
+    # Hoisted to the job because a step's own `env:` block is not reliably
+    # visible to that same step's `if:`. Declared here, the guards below are
+    # unambiguous — otherwise a configured token could still silently skip.
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -202,7 +209,6 @@ jobs:
         if: ${{ env.NPM_TOKEN != '' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --provenance --access public
 
       # Downstream repositories are updated only when their tokens exist, so a
@@ -210,7 +216,6 @@ jobs:
       - name: Update the Homebrew tap
         if: ${{ env.TAP_TOKEN != '' }}
         env:
-          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           git clone "https://x-access-token:${TAP_TOKEN}@github.com/TGod-Ajayi/homebrew-tap.git" tap
@@ -223,7 +228,6 @@ jobs:
       - name: Update the Scoop bucket
         if: ${{ env.TAP_TOKEN != '' }}
         env:
-          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           git clone "https://x-access-token:${TAP_TOKEN}@github.com/TGod-Ajayi/scoop-bucket.git" bucket

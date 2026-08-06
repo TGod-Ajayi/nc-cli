@@ -2,7 +2,7 @@
 #
 # NaijaCloud CLI + MCP server installer.
 #
-#   curl -fsSL https://your-domain.example/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/TGod-Ajayi/nc-cli/main/install.sh | sh
 #
 # Read this script before piping it to a shell. It:
 #   1. works out your platform and the release to install

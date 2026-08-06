@@ -98,7 +98,6 @@ MSI to sign and no elevation prompt.
 | `NPM_TOKEN`           | `npm publish --provenance`          | npm step is skipped              |
 | `TAP_TOKEN`           | pushing to the tap and bucket repos | those steps are skipped          |
 | `WINGET_TOKEN`        | the winget-pkgs PR                  | that job fails, release survives |
-| `MACOS_SIGN_IDENTITY` | Developer ID signing                | binaries are ad-hoc signed       |
 
 Steps are conditional on their secret existing, so a first release with none of
 them still produces a complete GitHub release.
@@ -169,9 +168,10 @@ checksum is missing.
   `TGod-Ajayi/nc-cli` — override it with `NAIJACLOUD_REPO_SLUG` — but
   `TGod-Ajayi/homebrew-tap` and `TGod-Ajayi/scoop-bucket` still have to be
   created by hand; their URLs are literals in the release workflow.
-- **The repository is private.** Every install path here reads from public
-  GitHub release assets, so none of them work until it is made public: the
-  install script's unauthenticated call to `api.github.com/repos/.../releases/latest`
-  404s, and Homebrew, Scoop and WinGet cannot fetch the archives. `ubuntu-24.04-arm`
-  is also free for public repositories only; a private repo needs a paid larger
-  runner or a QEMU cross-build for `linux_arm64`.
+- **The install script has no host.** The README documents
+  `curl -fsSL https://your-domain.example/install.sh | sh`, which is still a
+  placeholder. `https://raw.githubusercontent.com/TGod-Ajayi/nc-cli/main/install.sh`
+  works today; a real domain is nicer to type and survives a repository rename.
+- **No release has been cut yet.** Every URL in the rendered manifests points at
+  `releases/download/v<version>`, so the manifests are only valid once a tag has
+  produced that release.
