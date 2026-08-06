@@ -83,8 +83,12 @@ jobs:
         include:
           - target: darwin_arm64
             runner: macos-14
+          # macos-13 was retired; macos-15-intel is the remaining Intel image.
+          # If that label ever disappears too, drop this entry rather than let
+          # the release queue forever — darwin_arm64 already proves the darwin
+          # cross-compile, and both are produced by the same toolchain.
           - target: darwin_amd64
-            runner: macos-13
+            runner: macos-15-intel
           - target: linux_amd64
             runner: ubuntu-latest
           - target: linux_arm64
