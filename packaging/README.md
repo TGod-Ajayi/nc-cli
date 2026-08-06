@@ -149,10 +149,6 @@ checksum is missing.
 
 ## Known gaps
 
-- **No `LICENSE` file.** `package.json` says MIT and every manifest here claims
-  MIT, but the repository has no license text. WinGet's `LicenseUrl` points at
-  `blob/main/LICENSE`, which will 404 until one is added — needed before the
-  first WinGet submission.
 - **Binary size.** ~110 MB uncompressed, ~35 MB compressed: that is the embedded
   Node runtime, and it is the price of not requiring Node on the target machine.
   A Go or Rust rewrite is the only way substantially below this; `--minify` and

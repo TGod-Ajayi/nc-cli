@@ -42,6 +42,20 @@ contents:
     file_info:
       mode: 0644
 
+  # Debian expects the license text at /usr/share/doc/<pkg>/copyright, RPM under
+  # /usr/share/licenses/<pkg>/, so each entry is scoped to one packager.
+  - src: ./LICENSE
+    dst: /usr/share/doc/naijacloud/copyright
+    packager: deb
+    file_info:
+      mode: 0644
+
+  - src: ./LICENSE
+    dst: /usr/share/licenses/naijacloud/LICENSE
+    packager: rpm
+    file_info:
+      mode: 0644
+
 rpm:
   # Unsigned by default; CI passes a key via NFPM_NAIJACLOUD_PASSPHRASE and
   # `signature.key_file` when publishing to the yum repository.
