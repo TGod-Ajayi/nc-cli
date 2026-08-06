@@ -20,7 +20,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -44,6 +44,12 @@ const TARGETS = {
   linux_arm64: "bun-linux-arm64",
   windows_amd64: "bun-windows-x64",
 };
+
+/**
+ * Short alias shipped alongside the binary; see the Alias section below.
+ * Not `nc` — that name belongs to netcat on virtually every Unix machine.
+ */
+const ALIAS_NAME = "njc";
 
 const OS_NAMES = { darwin: "darwin", linux: "linux", win32: "windows" };
 const ARCH_NAMES = { x64: "amd64", arm64: "arm64" };
@@ -114,6 +120,19 @@ for (const target of targets) {
     { stdio: "inherit", cwd: root },
   );
 
+  /* ------------------------------------------------------------------------ */
+  /* Alias                                                                    */
+  /* ------------------------------------------------------------------------ */
+
+  // `njc` is the short name for the same executable. A relative symlink beside
+  // the binary costs nothing and survives tar, so anyone who just unpacks the
+  // archive onto their PATH gets both names. Windows has no equivalent in a
+  // .zip, so there the alias is created by the installer instead — Scoop makes
+  // a second shim, WinGet a second execution alias.
+  if (!isWindows) {
+    symlinkSync(binaryName, join(stageDir, ALIAS_NAME));
+  }
+
   // Only the host's own artifact can be executed here; the rest are verified by
   // the smoke-test job in the release workflow, on a runner that can run them.
   let reported = "(cross-compiled, not run)";
@@ -122,6 +141,17 @@ for (const target of targets) {
     reported = execFileSync(artifact, ["--version"], { encoding: "utf8" }).trim();
     if (reported !== pkg.version) {
       throw new Error(`Binary reports version ${reported}, expected ${pkg.version}.`);
+    }
+
+    // The alias is a real entrypoint, not documentation — a broken symlink here
+    // would otherwise only surface once someone had installed the release.
+    if (!isWindows) {
+      const aliased = execFileSync(join(stageDir, ALIAS_NAME), ["--version"], {
+        encoding: "utf8",
+      }).trim();
+      if (aliased !== pkg.version) {
+        throw new Error(`${ALIAS_NAME} reports version ${aliased}, expected ${pkg.version}.`);
+      }
     }
   }
 
@@ -140,7 +170,11 @@ for (const target of targets) {
     // unlike Compress-Archive it works when cross-building from Linux/macOS.
     execFileSync("zip", ["-j", "-q", archive, artifact], { stdio: "inherit" });
   } else {
-    execFileSync("tar", ["-czf", archive, "-C", stageDir, binaryName], { stdio: "inherit" });
+    // The alias is stored as a symlink, not a second copy of the binary, so the
+    // archive stays the size of one executable.
+    execFileSync("tar", ["-czf", archive, "-C", stageDir, binaryName, ALIAS_NAME], {
+      stdio: "inherit",
+    });
   }
 
   built.push({ target, artifact, archive, reported });

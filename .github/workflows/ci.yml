@@ -55,3 +55,15 @@ jobs:
           "$binary" schema > /dev/null
           # `whoami` exits non-zero when logged out, which is the state here.
           "$binary" whoami || true
+
+          # The `njc` alias is a symlink beside the binary on every non-Windows
+          # target, and must behave identically.
+          alias_path="$(dirname "$binary")/njc"
+          if [ -e "$alias_path" ]; then
+            [ "$("$alias_path" --version)" = "$("$binary" --version)" ] \
+              || { echo "njc and naijacloud report different versions" >&2; exit 1; }
+            # Help is generated from the invoked name, so the alias must
+            # document itself rather than the long name.
+            "$alias_path" --help 2>&1 | grep -q '^njc — ' \
+              || { echo "njc --help does not identify itself as njc" >&2; exit 1; }
+          fi

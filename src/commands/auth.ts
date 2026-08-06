@@ -17,6 +17,7 @@ import {
   resolveToken,
   writeStoredCredentials,
 } from "../auth/credentials.js";
+import { programName } from "../program-name.js";
 import { promptLine, requireTty, write } from "../terminal.js";
 
 /* -------------------------------------------------------------------------- */
@@ -49,8 +50,8 @@ export async function login(options: LoginOptions = {}): Promise<void> {
   } else {
     if (options.email === undefined || options.password === undefined) {
       requireTty("Interactive login", [
-        "naijacloud login --email you@example.com --password '<password>'",
-        "naijacloud login --token '<access-token>'",
+        `${programName()} login --email you@example.com --password '<password>'`,
+        `${programName()} login --token '<access-token>'`,
       ]);
     }
 
@@ -109,7 +110,10 @@ export function logout(): void {
 export async function whoami(): Promise<void> {
   const resolved = resolveToken();
   if (!resolved) {
-    process.stdout.write("Not logged in. Run 'naijacloud login' first.\n");
+    // The CLI's own `whoami`, so it can name the invoked command. The
+    // equivalent in src/api/transport.ts stays canonical: the MCP server shares
+    // it, and there is no invoked name behind a tool call.
+    process.stdout.write(`Not logged in. Run '${programName()} login' first.\n`);
     process.exitCode = 1;
     return;
   }

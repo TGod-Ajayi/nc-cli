@@ -3,6 +3,10 @@
 # The release ships a .zip holding a single .exe, so this is a `zip` installer
 # with a `portable` nested installer: WinGet unpacks it and puts `naijacloud` on
 # the PATH via an app-execution alias, with no MSI and no elevation.
+#
+# The same .exe is listed twice, which is how one portable package exposes two
+# commands: WinGet creates one alias per entry, so `njc` and `naijacloud` both
+# resolve to the single extracted binary.
 PackageIdentifier: NaijaCloud.CLI
 PackageVersion: {{VERSION}}
 InstallerType: zip
@@ -10,6 +14,8 @@ NestedInstallerType: portable
 NestedInstallerFiles:
   - RelativeFilePath: naijacloud.exe
     PortableCommandAlias: naijacloud
+  - RelativeFilePath: naijacloud.exe
+    PortableCommandAlias: njc
 InstallModes:
   - silent
   - silentWithProgress

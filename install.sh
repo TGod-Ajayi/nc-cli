@@ -8,7 +8,8 @@
 #   1. works out your platform and the release to install
 #   2. downloads that release's archive from GitHub
 #   3. verifies its SHA-256 against the release's published checksums
-#   4. unpacks it into ~/.local/share/naijacloud and symlinks ~/.local/bin/naijacloud
+#   4. unpacks it into ~/.local/share/naijacloud and symlinks both
+#      ~/.local/bin/naijacloud and the short alias ~/.local/bin/njc
 #
 # The download is a self-contained executable — it embeds its own runtime, so
 # Node.js is NOT required. Nothing runs as root and nothing is written outside
@@ -180,7 +181,7 @@ INSTALLED_VERSION="$("$INSTALL_DIR/bin/naijacloud" --version 2>/dev/null || true
 # 5. Link onto PATH — user-owned, no sudo
 # ---------------------------------------------------------------------------
 
-step "Linking the naijacloud executable"
+step "Linking the naijacloud and njc executables"
 
 mkdir -p "$BIN_DIR" || die "Could not create $BIN_DIR"
 
@@ -191,6 +192,21 @@ fi
 
 ln -sf "$INSTALL_DIR/bin/naijacloud" "$LINK"
 info "  $LINK -> $INSTALL_DIR/bin/naijacloud"
+
+# `njc` is the short alias for the same binary. Unlike the primary name a clash
+# here is not fatal: the install is already usable, so it warns and moves on
+# rather than throwing away a good install over a convenience alias.
+ALIAS_LINK="$BIN_DIR/njc"
+ALIAS_LINKED=0
+if [ -e "$ALIAS_LINK" ] && [ ! -L "$ALIAS_LINK" ]; then
+  warn "$ALIAS_LINK exists and is not a symlink; leaving it alone.
+  Only the 'naijacloud' command was installed. Remove that file and re-run to get 'njc'."
+elif ln -sf "$INSTALL_DIR/bin/naijacloud" "$ALIAS_LINK" 2>/dev/null; then
+  ALIAS_LINKED=1
+  info "  $ALIAS_LINK -> $INSTALL_DIR/bin/naijacloud"
+else
+  warn "Could not link $ALIAS_LINK; only the 'naijacloud' command was installed."
+fi
 
 ON_PATH=0
 case ":$PATH:" in
@@ -218,6 +234,11 @@ if [ "$ON_PATH" -eq 0 ]; then
   info "      export PATH=\"$BIN_DIR:\$PATH\""
   info ""
   info "  Until then, use the full path: $LINK"
+  info ""
+fi
+
+if [ "$ALIAS_LINKED" -eq 1 ]; then
+  info "Every command below also works as 'njc' — 'njc deploy' is 'naijacloud deploy'."
   info ""
 fi
 

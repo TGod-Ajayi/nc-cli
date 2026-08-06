@@ -35,10 +35,16 @@ class Naijacloud < Formula
 
   def install
     bin.install "naijacloud"
+    # Short alias for the same executable. The archive already ships an `njc`
+    # symlink, but it is recreated here so the formula states the link it owns
+    # rather than depending on what tar happened to unpack.
+    bin.install_symlink bin/"naijacloud" => "njc"
   end
 
   test do
     assert_match version.to_s, shell_output("#{bin}/naijacloud --version")
+    # The alias must be a working entrypoint, not just a link that exists.
+    assert_match version.to_s, shell_output("#{bin}/njc --version")
     # `whoami` exits 1 when nobody is logged in, which is the expected state in
     # a sandboxed test; asserting on the message keeps the check offline.
     assert_match "Not logged in", shell_output("#{bin}/naijacloud whoami", 1)

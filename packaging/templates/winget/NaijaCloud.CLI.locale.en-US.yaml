@@ -15,6 +15,9 @@ Description: |-
   projects, services, deployments, custom domains and environment variables
   without leaving the terminal. It also runs as an MCP server, so an AI agent
   can perform the same operations through `naijacloud mcp`.
+
+  Installs as both `naijacloud` and the shorter `njc`; the two are the same
+  command, so `njc deploy` and `naijacloud deploy` are interchangeable.
 Moniker: naijacloud
 Tags:
   - cli

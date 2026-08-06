@@ -10,7 +10,14 @@
       "hash": "{{SHA256_WINDOWS_AMD64}}"
     }
   },
-  "bin": "naijacloud.exe",
+  "bin": [
+    "naijacloud.exe",
+    [
+      "naijacloud.exe",
+      "njc"
+    ]
+  ],
+  "notes": "Also installed as 'njc', a short alias for the same command.",
   "checkver": {
     "github": "https://github.com/{{REPO_SLUG}}"
   },

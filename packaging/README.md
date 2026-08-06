@@ -40,6 +40,36 @@ naijacloud_<version>_checksums.txt
 naijacloud_<version>_<arch>.deb  /  naijacloud-<version>.<arch>.rpm
 ```
 
+### Two command names
+
+Every channel puts the CLI on the PATH twice: as `naijacloud` and as the short
+alias `njc`. There is only ever **one executable** — the alias is a symlink or a
+shim, never a second copy, so it costs nothing in a 64 MB binary.
+
+`njc` and not `nc` because `nc` is netcat. On the user-scoped channels that
+would merely shadow it; in the `.deb`/`.rpm`, which write to `/usr/bin`, it
+would collide head-on with `netcat-openbsd` and `nmap-ncat`, both of which own
+that name through `update-alternatives`.
+
+| Channel            | How the alias is created                                       |
+| ------------------ | -------------------------------------------------------------- |
+| npm / npx          | a second `bin` entry in `package.json`                          |
+| tarball            | `njc -> naijacloud` symlink inside the archive, added by [`build-binary.mjs`](../scripts/build-binary.mjs) |
+| install.sh         | a second symlink in `~/.local/bin`                              |
+| Homebrew           | `bin.install_symlink` in [the formula](templates/homebrew/naijacloud.rb) |
+| apt / yum          | a `type: symlink` entry in [`nfpm.yaml`](nfpm.yaml)              |
+| Scoop              | a second shim via the `bin` array in [the manifest](templates/scoop/naijacloud.json) |
+| WinGet             | a second `PortableCommandAlias` in [the installer manifest](templates/winget/NaijaCloud.CLI.installer.yaml) |
+
+A `.zip` cannot carry a symlink, so on Windows the alias exists only once the
+installer has run — which is why the release `smoke` job asserts `njc` on the
+tar.gz targets and skips it for `windows_amd64`.
+
+The CLI reads the name it was invoked as ([`src/program-name.ts`](../src/program-name.ts))
+and writes its usage, examples and hints in that name, so a `njc` user is never
+told to run `naijacloud`. Anything the MCP server shares stays canonical, since
+a tool call has no invoked name behind it.
+
 ---
 
 ## One-time setup
@@ -106,6 +136,12 @@ stay valid and re-enabling is a matter of uncommenting. To turn it back on:
 The first submission is reviewed by a human; later ones are usually automatic.
 The package ships as a `zip` with a `portable` nested installer, so there is no
 MSI to sign and no elevation prompt.
+
+Note for whoever re-enables this: the manifest lists the same `naijacloud.exe`
+twice under different `PortableCommandAlias` values, which is how one portable
+package exposes both command names. It is schema-valid and the entries are
+distinct, but it has never been through winget-pkgs validation — nothing has
+been submitted since the alias was added. Worth checking on that first PR.
 
 ### Secrets the workflow reads
 

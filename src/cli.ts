@@ -2,6 +2,9 @@
 /**
  * `naijacloud` entrypoint — dispatches login / logout / whoami / mcp.
  *
+ * Installed under two names: `naijacloud` and the shorter `njc`. Both are the
+ * same executable, so every command below works either way.
+ *
  * Under `naijacloud mcp` stdout is owned by the MCP protocol, so this file
  * writes help, errors and diagnostics to stderr and keeps stdout for command
  * output only.
@@ -12,19 +15,37 @@ import process from "node:process";
 import { CLIENT_VERSION, DEFAULT_API_BASE_URL } from "./api/index.js";
 import { TOKEN_ENV_VAR } from "./auth/credentials.js";
 import { login, logout, whoami } from "./commands/auth.js";
+import { ALIAS, PROGRAM, programName } from "./program-name.js";
 
-const USAGE = `naijacloud — CLI and MCP server for NaijaCloud hosting
+/** Column where every description starts, matching the option lists below. */
+const DESCRIPTION_COLUMN = 28;
+
+const COMMANDS: ReadonlyArray<readonly [string, string]> = [
+  ["login [options]", "Authenticate and store credentials (mode 0600)"],
+  ["logout", "Delete stored credentials"],
+  ["whoami", "Show the authenticated account"],
+  ["init [dir]", "Write a naijacloud.json, without deploying"],
+  ["deploy [dir]", "Build, upload and release a static site"],
+  ["schema [--write]", "Print the naijacloud.json JSON Schema"],
+  ["mcp", "Run the MCP server over stdio"],
+  ["--help", "Show this message"],
+  ["--version", "Show the version"],
+];
+
+/**
+ * Padded rather than hard-coded, so the descriptions stay in one column for
+ * both `naijacloud` and the seven-characters-shorter `njc`.
+ */
+function usage(program: string): string {
+  const lines = COMMANDS.map(([command, description]) => {
+    const label = `${program} ${command}`;
+    return `  ${label.padEnd(DESCRIPTION_COLUMN)} ${description}`;
+  }).join("\n");
+
+  return `${program} — CLI and MCP server for NaijaCloud hosting
 
 Usage
-  naijacloud login [options]   Authenticate and store credentials (mode 0600)
-  naijacloud logout            Delete stored credentials
-  naijacloud whoami            Show the authenticated account
-  naijacloud init [dir]        Write a naijacloud.json, without deploying
-  naijacloud deploy [dir]      Build, upload and release a static site
-  naijacloud schema [--write]  Print the naijacloud.json JSON Schema
-  naijacloud mcp               Run the MCP server over stdio
-  naijacloud --help            Show this message
-  naijacloud --version         Show the version
+${lines}
 
 Login options
   --email <email>              Email, instead of being prompted
@@ -62,8 +83,11 @@ Environment
   NAIJACLOUD_DEPLOY_TIMEOUT_MS Deploy wait timeout in ms (default 900000)
 
 Register with Claude Code
-  claude mcp add --transport stdio naijacloud -- naijacloud mcp
+  claude mcp add --transport stdio naijacloud -- ${program} mcp
+
+  Installed as both '${PROGRAM}' and '${ALIAS}'; the two are the same program.
 `;
+}
 
 const VERSION = CLIENT_VERSION;
 
@@ -138,9 +162,10 @@ function tristate(flags: Map<string, string>, name: string): boolean | undefined
 
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
+  const program = programName();
 
   if (command === undefined || command === "--help" || command === "-h" || command === "help") {
-    process.stderr.write(USAGE);
+    process.stderr.write(usage(program));
     process.exitCode = command === undefined ? 1 : 0;
     return;
   }
@@ -228,7 +253,7 @@ async function main(): Promise<void> {
     }
 
     default:
-      process.stderr.write(`Unknown command: ${command}\n\n${USAGE}`);
+      process.stderr.write(`Unknown command: ${command}\n\n${usage(program)}`);
       process.exitCode = 1;
       return;
   }

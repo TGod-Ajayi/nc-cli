@@ -7,6 +7,16 @@ A single CLI that does two jobs:
 
 Think of it as what the Vercel CLI is for Vercel, with the agent-facing half exposed as MCP tools.
 
+Every install channel puts the command on your PATH under **two names**: `naijacloud` and the shorter **`njc`**. They are the same executable, so `njc deploy` and `naijacloud deploy` are interchangeable — this README uses the long name throughout, but you can type either.
+
+```bash
+njc login
+njc deploy
+njc --help          # help is written in whichever name you used
+```
+
+> Why `njc` and not `nc`? `nc` is netcat, which exists on virtually every Unix machine. Taking that name would shadow it on your PATH — and in the `.deb`/`.rpm`, which install into `/usr/bin`, it would collide with the `netcat-openbsd` and `nmap-ncat` packages outright.
+
 ---
 
 ## Install
@@ -19,7 +29,9 @@ If you have Node.js >= 20 installed, you can install via `npm`:
 npm install -g naijacloud-cli
 ```
 
-You can also execute commands directly via `npx`, although this won't add `naijacloud` to your `PATH`:
+That puts both `naijacloud` and `njc` on your PATH.
+
+You can also execute commands directly via `npx`, although this won't add `naijacloud` or `njc` to your `PATH`:
 
 ```bash
 npx naijacloud-cli login
@@ -96,7 +108,7 @@ curl -fsSL https://raw.githubusercontent.com/TGod-Ajayi/nc-cli/main/install.sh |
 >
 > The raw script is also in this repo: [`install.sh`](install.sh).
 
-The script downloads the release archive for your platform, **verifies its SHA-256 against the release's published checksums**, unpacks it into `~/.local/share/naijacloud` and symlinks `~/.local/bin/naijacloud`. Nothing needs `sudo`, nothing is written outside your home directory, and Node is not required — the download is a self-contained executable. If `~/.local/bin` is not on your PATH it tells you the line to add.
+The script downloads the release archive for your platform, **verifies its SHA-256 against the release's published checksums**, unpacks it into `~/.local/share/naijacloud` and symlinks both `~/.local/bin/naijacloud` and `~/.local/bin/njc`. Nothing needs `sudo`, nothing is written outside your home directory, and Node is not required — the download is a self-contained executable. If `~/.local/bin` is not on your PATH it tells you the line to add.
 
 Override any of it with environment variables:
 

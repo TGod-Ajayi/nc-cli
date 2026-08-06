@@ -11,8 +11,10 @@
   },
   "bugs": "https://github.com/TGod-Ajayi/nc-cli/issues",
   "homepage": "https://github.com/TGod-Ajayi/nc-cli#readme",
+  "//bin": "`njc` is a short alias for the same entrypoint. Not `nc`, which is netcat on virtually every Unix machine.",
   "bin": {
-    "naijacloud": "build/cli.js"
+    "naijacloud": "build/cli.js",
+    "njc": "build/cli.js"
   },
   "files": [
     "build",

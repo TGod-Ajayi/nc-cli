@@ -109,9 +109,18 @@ jobs:
           if [ "${{ matrix.target }}" = "windows_amd64" ]; then
             unzip -q "naijacloud_"*"_${{ matrix.target }}.zip"
             ./naijacloud.exe --version
+            # No `njc` here: a .zip cannot carry a symlink, so on Windows the
+            # alias is created by the installer (a Scoop shim, a WinGet alias).
           else
             tar -xzf "naijacloud_"*"_${{ matrix.target }}.tar.gz"
             ./naijacloud --version
+            # The archive ships `njc` as a symlink beside the binary. Running it
+            # proves the link survived tar and resolves, on a runner that can
+            # actually execute this architecture.
+            ./njc --version
+            # Both names are the same program, so they must agree on the version.
+            [ "$(./njc --version)" = "$(./naijacloud --version)" ] \
+              || { echo "njc and naijacloud report different versions" >&2; exit 1; }
           fi
 
   release:

@@ -46,6 +46,7 @@ import {
 } from "../deploy-static/manifest.js";
 import type { Manifest } from "../deploy-static/manifest.js";
 import { askManifestBasics } from "../deploy-static/configure.js";
+import { programName } from "../program-name.js";
 import { isInteractive, requireTty, write } from "../terminal.js";
 import { writeLocalSchema } from "./schema.js";
 import { createZip } from "../deploy-static/zip.js";
@@ -164,8 +165,8 @@ async function resolveConfig(options: DeployOptions): Promise<ResolvedConfig> {
   // — `--yes` is how the caller says "use what you detect".
   if (loaded === null && serviceId === undefined && !options.yes) {
     requireTty("Configuring a first deploy", [
-      "naijacloud deploy <dir> --name <name> --yes",
-      `or commit a ${MANIFEST_FILENAME} (write one with 'naijacloud schema --write')`,
+      `${programName()} deploy <dir> --name <name> --yes`,
+      `or commit a ${MANIFEST_FILENAME} (write one with '${programName()} schema --write')`,
     ]);
   }
 
@@ -470,7 +471,7 @@ export async function deploy(options: DeployOptions): Promise<void> {
             // this site exists and would create a second one.
             `Commit it — that is what makes the next deploy update this site ` +
               "instead of creating another.\n"
-          : "Next time, just `naijacloud deploy`.\n",
+          : `Next time, just \`${programName()} deploy\`.\n`,
       );
     }
   }

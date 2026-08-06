@@ -27,6 +27,7 @@ import {
   writeManifest,
 } from "../deploy-static/manifest.js";
 import type { Manifest } from "../deploy-static/manifest.js";
+import { programName } from "../program-name.js";
 import { isInteractive, requireTty, write } from "../terminal.js";
 import { writeLocalSchema } from "./schema.js";
 
@@ -63,7 +64,7 @@ export async function init(options: InitOptions): Promise<void> {
   const interactive = !options.yes && isInteractive();
   if (!interactive && !options.yes) {
     requireTty("Writing a manifest", [
-      `naijacloud init --name <name> --output <dir> --yes`,
+      `${programName()} init --name <name> --output <dir> --yes`,
     ]);
   }
 
@@ -126,7 +127,7 @@ export async function init(options: InitOptions): Promise<void> {
   write(
     `Wrote ${MANIFEST_FILENAME} (+ ${LOCAL_SCHEMA_PATH} for your editor)\n` +
       (manifest.serviceId === undefined
-        ? "Run `naijacloud deploy` to create the site; the id it returns is written back here.\n"
-        : "Run `naijacloud deploy` to update the existing site.\n"),
+        ? `Run \`${programName()} deploy\` to create the site; the id it returns is written back here.\n`
+        : `Run \`${programName()} deploy\` to update the existing site.\n`),
   );
 }

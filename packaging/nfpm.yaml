@@ -37,6 +37,17 @@ contents:
     file_info:
       mode: 0755
 
+  # Short alias for the same executable. For a symlink entry nfpm reads `src`
+  # as the link target, so this is /usr/bin/njc -> /usr/bin/naijacloud and no
+  # second copy of the binary goes into the package.
+  #
+  # `njc` rather than `nc` precisely because this writes to /usr/bin: `nc` is
+  # netcat there, owned by netcat-openbsd on Debian and nmap-ncat on RHEL via
+  # update-alternatives, and taking that name would break netcat system-wide.
+  - src: /usr/bin/naijacloud
+    dst: /usr/bin/njc
+    type: symlink
+
   - src: ./README.md
     dst: /usr/share/doc/naijacloud/README.md
     file_info:
