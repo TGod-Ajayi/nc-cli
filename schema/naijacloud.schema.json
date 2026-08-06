@@ -49,5 +49,5 @@
   "additionalProperties": {},
   "description": "Deploy manifest for the NaijaCloud CLI. Written by `naijacloud deploy`; commit it.",
   "title": "NaijaCloud deploy manifest (naijacloud.json)",
-  "x-generated-by": "naijacloud-cli/0.1.2"
+  "x-generated-by": "naijacloud-cli/0.2.0"
 }
