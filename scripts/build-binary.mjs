@@ -20,10 +20,10 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
@@ -87,6 +87,28 @@ try {
   execFileSync("bun", ["--version"], { stdio: "pipe" });
 } catch {
   throw new Error("bun is required to build the binaries — see https://bun.sh/docs/installation");
+}
+
+/**
+ * The CLI's own ZIP writer, reused rather than shelled out to.
+ *
+ * `zip` is not on the Windows runner images, and `Compress-Archive` cannot run
+ * on the Linux box that cross-builds the Windows target — no external tool is
+ * present in both places, which is the whole reason src/deploy-static/zip.ts
+ * exists. Loading it here keeps one archiving path on every host.
+ *
+ * It is loaded from build/, so `npm run build` has to have run: `npm run
+ * binary` and the workflows all do that first. Only needed for a Windows
+ * target, so a plain `--target linux_arm64` still runs against a bare checkout.
+ */
+let createZip;
+if (targets.some((target) => target.startsWith("windows"))) {
+  const writer = join(root, "build/deploy-static/zip.js");
+  if (!existsSync(writer)) {
+    throw new Error(`${writer} is missing — run \`npm run build\` before building the binaries.`);
+  }
+  // A file URL, not a path: bare `D:\...` is not a valid import specifier.
+  ({ createZip } = await import(pathToFileURL(writer).href));
 }
 
 const built = [];
@@ -166,9 +188,11 @@ for (const target of targets) {
 
   step(`Archiving → ${archive}`);
   if (isWindows) {
-    // `zip` is present on every GitHub runner image including Windows, and
-    // unlike Compress-Archive it works when cross-building from Linux/macOS.
-    execFileSync("zip", ["-j", "-q", archive, artifact], { stdio: "inherit" });
+    // Flat, single-entry archive — the same shape `zip -j` produced, and what
+    // Scoop expects. The alias is not in here; on Windows the installer makes
+    // it, as the Alias section above explains.
+    const { buffer } = createZip([{ path: binaryName, contents: readFileSync(artifact) }]);
+    writeFileSync(archive, buffer);
   } else {
     // The alias is stored as a symlink, not a second copy of the binary, so the
     // archive stays the size of one executable.
