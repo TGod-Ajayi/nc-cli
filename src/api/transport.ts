@@ -35,6 +35,13 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 declare const __NAIJACLOUD_VERSION__: string | undefined;
 
 /**
+ * What CLIENT_VERSION reports when neither source of a version is available.
+ * Callers that map a version onto a release artifact — a git tag, say — need to
+ * recognise it, because no release was ever cut under this number.
+ */
+export const UNKNOWN_VERSION = "0.0.0";
+
+/**
  * Single source of truth for the version, shared by the CLI and MCP server.
  *
  * A standalone binary has no package.json beside it, so the build inlines the
@@ -47,9 +54,9 @@ export const CLIENT_VERSION: string = ((): string => {
   try {
     const require = createRequire(import.meta.url);
     const pkg = require("../../package.json") as { version?: string };
-    return pkg.version ?? "0.0.0";
+    return pkg.version ?? UNKNOWN_VERSION;
   } catch {
-    return "0.0.0";
+    return UNKNOWN_VERSION;
   }
 })();
 

@@ -16,23 +16,34 @@ Legend: ✅ covered · 🟡 partial · 🔴 absent.
 
 ## 1. Where the CLI stands
 
-The terminal surface is **auth-only**. [`src/cli.ts`](src/cli.ts) dispatches four
-commands:
+> Updated after §3.1 (static deploy) and §3.3 (terminal verbs) landed. The
+> original framing — an auth-only CLI with everything operational locked behind
+> MCP — no longer holds; what follows is the current state.
+
+[`src/cli.ts`](src/cli.ts) dispatches:
 
 ```
-naijacloud login | logout | whoami | mcp
+login | logout | whoami                      auth
+deploy | redeploy | init | schema            ship
+project                                      interactive: project > env > service
+projects | services | deployments | cancel   inspect and change
+env | domains
+mcp                                          the agent-facing half
 ```
 
-Everything operational lives behind the MCP server in
-[`src/mcp-server.ts`](src/mcp-server.ts) — eleven tools:
+The MCP server in [`src/mcp/server.ts`](src/mcp/server.ts) still exposes eleven
+tools:
 
 `list_projects` · `get_project` · `list_deployments` · `get_deployment` ·
 `create_deployment` · `delete_deployment` (cancel) · `get_deployment_logs` ·
 `list_domains` · `add_domain` · `list_env_vars` · `set_env_var`
 
-That is roughly **30 of the ~190 operations** the dashboard uses — about 15% of
-the product's surface, and none of it reachable by a human at a prompt. A user
-can authenticate from the terminal and then has to open a browser to do anything.
+Roughly **35 of the ~190 operations** the dashboard uses — still under 20% of the
+product's surface, but the part that exists is now reachable by a human at a
+prompt as well as by an agent. The MCP server has fallen *behind* the CLI: the
+four operations §3.3 added (`myServices`, `deleteEnvVar`, `verifyCustomDomain`,
+`removeCustomDomain`) are in the API layer and wired to commands, but have no
+tools yet — see §7, which is now a short job rather than a speculative one.
 
 ---
 
@@ -43,18 +54,18 @@ can authenticate from the terminal and then has to open a browser to do anything
 | Auth | `login`, `signup`, `githubLoginUrl`, `googleLoginUrl`, `requestPasswordReset`, `resetPassword`, `me` | 🟡 password only | 🔴 |
 | Teams | `myTeams`, `teamMembers`, `inviteToTeam`, `removeMember`, `renameTeam`, `setTeamDefaultRegion`, `setTeamDeploymentPreviews` | 🔴 | 🔴 |
 | Billing & usage | `workspaceUsageMeters`, `workspaceBilling`, `workspaceInvoices`, `invoice`, `changeWorkspacePlan` | 🔴 | 🔴 |
-| Projects | `createProject`, `updateProject`, `deleteProject`, `createEnvironment`, `deleteEnvironment`, `projectEnvironments` | 🔴 | 🟡 read-only |
-| Services | `createService`, `createDatastoreService`, `detectBuild`, `deleteService`, `updateServiceBuild`, `updateServiceSource`, `updateServiceResources`, `updateServiceRegion`, `disconnectServiceRepo`, `serviceConnectionDetails`, `myServices`, `deployLocations` | 🔴 | 🔴 |
-| Env vars & secret files | `setEnvVars`, `deleteEnvVar`, `serviceSecretFiles`, `setSecretFile`, `deleteSecretFile` | 🔴 | 🟡 set only |
-| Deployments | `triggerDeploy`, `cancelDeployment`, `deploymentLogs`, socket.io live streams | 🔴 | ✅ mostly |
-| Domains | `addCustomDomain`, `verifyCustomDomain`, `removeCustomDomain`, `dnsTarget.records` / `.conflicts` | 🔴 | 🟡 add + list |
+| Projects & environments | `createProject`, `updateProject`, `deleteProject`, `createEnvironment`, `deleteEnvironment`, `projectEnvironments` | 🟡 read + `createEnvironment` | 🟡 read-only |
+| Services | `createService`, `detectBuild`, `deleteService`, `updateServiceBuild`, `updateServiceSource`, `updateServiceResources`, `updateServiceRegion`, `disconnectServiceRepo`, `myServices`, `deployLocations` | 🟡 `myServices`, read, create datastore | 🔴 |
+| Env vars & secret files | `setEnvVars`, `deleteEnvVar`, `serviceSecretFiles`, `setSecretFile`, `deleteSecretFile` | 🟡 ls/set/rm | 🟡 set only |
+| Deployments | `triggerDeploy`, `cancelDeployment`, `deploymentLogs`, socket.io live streams | ✅ except live streams | ✅ mostly |
+| Domains | `addCustomDomain`, `verifyCustomDomain`, `removeCustomDomain`, `dnsTarget.records` / `.conflicts` | ✅ except rich dnsTarget | 🟡 add + list |
 | PR previews | `servicePreviews`, `prPreview`, `setServicePreviewsEnabled`, `teardownPreview` | 🔴 | 🔴 |
 | Cron jobs | `cronRuns`, `cronRun`, `cronRunLogs`, `runCronJob`, `deployCronJob`, `updateCronJob`, `setCronJobSuspended`, `cronStats` | 🔴 | 🔴 |
 | Databases (Studio) | `runDatabaseQuery`, `databaseObjects`, `tableColumns`, `tableStats`, `schemaGraph`, `insertRow`, `updateRow`, `deleteRow`, `migrations`, `savedQueries`, `exportDatabase`, `exportTable` | 🔴 | 🔴 |
 | Backups | `backups`, `backupSchedule`, `setBackupFrequency`, `runBackupNow`, `restoreBackup`, `deleteBackup`, `backupDownloadUrl`, `restore` | 🔴 | 🔴 |
 | Redis / cache | `redisKeys`, `redisValue`, `cacheStats`, `cacheConfig`, `setCacheConfig`, `runCacheCommand` | 🔴 | 🔴 |
 | Object storage | ~25 ops — buckets, objects, presigned upload/download, policy, CORS, lifecycle, versioning, credentials | 🔴 | 🔴 |
-| Static sites | `createStaticUpload`, `deployStaticSite`, `redeployStaticSite`, `staticSites` | 🔴 | 🔴 |
+| Static sites | `createStaticUpload`, `deployStaticSite`, `redeployStaticSite`, `staticSites` | ✅ `deploy`, incl. `--env` | 🔴 |
 | GitHub | `githubConnection`, `githubAccounts`, `githubRepositories`, `githubRepositoryBranches`, `githubAppInstallUrl` | 🔴 | 🔴 |
 | Metrics | `serviceMetrics`, `serviceUsage`, `liveServiceStats`, `projectUsage`, `webHeadlineMetrics`, `webRequestSeries`, `serviceHeadline` | 🔴 | 🔴 |
 | Activity & status | `workspaceActivity`, `platformStatus`, `statusIncidents` | 🔴 | 🔴 |
@@ -89,6 +100,30 @@ whole flow, and it is CLI-shaped end to end:
 `redeployStaticSite(input: { serviceId, uploadId, … })` replaces a site in place,
 same URL, atomic cutover — that is `naijacloud deploy` run a second time.
 
+#### Correction: a static site belongs to an environment ✅
+
+The flow above creates a site that is *not placed anywhere* — and that was a
+real gap, because every other service in the product lives at
+`Project > Environment > Service`, and a static site sitting outside that tree
+cannot be found by `naijacloud project` or reasoned about as production.
+
+`DeployStaticSiteInput` has no `environmentId` and cannot be made to target one.
+The mutation that can is **`createService`**, whose input carries both
+`environmentId` and the static fields (`staticUploadId`, `staticSpa`,
+`staticIndexPath`, `staticOutputDir`). So the pipeline now branches:
+
+| Situation | Mutation | Result |
+| --- | --- | --- |
+| `--env` / manifest `environmentId`, no `serviceId` | `createService(type: STATIC)` | Site created inside that environment |
+| No environment known, no `serviceId` | `deployStaticSite` | Platform places the site (the original behaviour) |
+| `serviceId` present | `redeployStaticSite` | In-place update, environment unchanged |
+
+`environmentId` joins the manifest as an additive key and is written back after
+a targeted create, so later deploys and the navigator agree on where the site
+lives. A bare environment name is refused rather than searched for — nearly
+every project has a `prod`, and there is no environment-by-name query that would
+make guessing safe, so it must be `project/environment` or an id.
+
 #### The manifest: `naijacloud.json`
 
 **The CLI owns this file.** There is no setup step and nothing to hand-write:
@@ -102,10 +137,11 @@ as a floor, not a fixed schema.
 
 ```json
 {
-  "$schema": ".naijacloud/schema.json",
+  "$schema": "https://raw.githubusercontent.com/TGod-Ajayi/nc-cli/v0.2.0/schema/naijacloud.schema.json",
   "version": 1,
   "name": "acme-marketing",
   "serviceId": "svc_01HX…",
+  "environmentId": "env_01HY…",
   "build": "npm run build",
   "output": "dist",
   "spa": true,
@@ -116,23 +152,31 @@ as a floor, not a fixed schema.
 
 | Field | Type | Maps to | Notes |
 | --- | --- | --- | --- |
-| `$schema` | string | — | Points at the copy the CLI drops in `.naijacloud/`; see *The schema ships with the CLI*. |
+| `$schema` | string | — | The hosted schema for the CLI version that wrote the file, pinned to its release tag; see *The schema is pinned to your CLI version*. |
 | `version` | number | — | Manifest format version. Written from day one so a genuine breaking change has somewhere to announce itself. |
 | `name` | string | `DeployStaticSiteInput.name` | First deploy only; ignored once `serviceId` is set. Defaults to the directory name. |
 | `serviceId` | string | `RedeployStaticSiteInput.serviceId` | Written back by the first successful deploy. **Its presence is what turns a deploy into a redeploy** — same site, same URL, atomic cutover. |
+| `environmentId` | string | `CreateServiceInput.environmentId` | Environment the site is created in. Written back by the first deploy that targets one; without it the platform places the site itself. See *Correction: a static site belongs to an environment*. |
 | `build` | string | — | Run locally before zipping. Skipped by `--prebuilt`. A non-zero exit aborts the deploy before anything is uploaded. |
 | `output` | string | the directory that gets zipped | Guessed locally — first existing of `dist`, `build`, `out`, `public`, `_site`. |
 | `spa` | boolean | `DeployStaticSiteInput.spaFallback` | Guessed locally from the framework in `package.json` (Vite/CRA/Vue/Svelte SPA templates → true; Astro/Eleventy/Hugo → false). |
 | `index` | string | `DeployStaticSiteInput.indexPath` | Only needed when the entry file is not `index.html`. |
 | `ignore` | string[] | — | Globs excluded from the archive, on top of the always-excluded set below. |
 
-#### The schema ships with the CLI
+#### The schema is pinned to your CLI version
 
-No hosted schema URL. Editor completion should work on a plane, behind a
-corporate proxy, and for a CLI version that is two releases old — a
-`https://naijacloud.com/schema/…` reference gives none of that, and pins every
-repo to whatever the website is serving today rather than to the CLI that
-actually parses the file.
+A hosted schema URL, but **pinned to a release tag** rather than to a branch:
+`https://raw.githubusercontent.com/TGod-Ajayi/nc-cli/v<version>/schema/naijacloud.schema.json`.
+The pin is what makes it safe. An unpinned `…/main/…` reference would complete
+keys from unreleased code against a CLI that rejects them; a pinned one matches
+the binary that actually parses the file, and going stale only means *fewer*
+completions, never false errors, because the format is additive-only. Every
+published version is a `v*` tag, and CI fails the build when the committed
+schema and the generator disagree, so the pin always resolves to that version's
+validator.
+
+The cost is a network fetch on a file people commit. That is why `--write`
+stays: see *Offline* below.
 
 **One source of truth: a `zod` schema in `src/manifest.ts`**, which is also what
 validates the manifest at read time. `zod@4` is already a dependency, and
@@ -149,17 +193,22 @@ naijacloud schema              print the JSON Schema to stdout
 naijacloud schema --write      write .naijacloud/schema.json (gitignored)
 ```
 
-The first-run prompt does the `--write` automatically and sets
-`"$schema": ".naijacloud/schema.json"` in the manifest, so completion and
-inline validation work in VS Code and the JetBrains IDEs with no configuration
-and no network. Regenerating on CLI upgrade is one command; a stale local copy
-degrades to weaker editor hints, never to a failed deploy, because the CLI
-validates against its own compiled-in schema regardless of what
-`$schema` points at.
+**Offline.** `--write` drops the document beside the manifest and repoints
+`$schema` at that copy, for editors that cannot reach GitHub — an air-gapped
+machine, a proxy that blocks raw content. `init` and `deploy` notice a relative
+`$schema` and refresh the copy on every run, so the escape hatch keeps itself
+current instead of rotting; they never create one that isn't already there, so
+no directory appears for anyone who didn't ask. `--write <path>` covers teams
+who would rather commit the schema than gitignore it.
 
-For teams that would rather commit the schema than gitignore it, `--write
-<path>` covers it. Publishing the same file to a URL later remains possible and
-purely additive — the generated artifact is the same either way.
+A stale local copy degrades to weaker editor hints, never to a failed deploy,
+because the CLI validates against its own compiled-in schema regardless of what
+`$schema` points at — it never fetches the URL either.
+
+Moving the hosted copy to a domain we own (`schema.naijacloud.com/v1.json`,
+published from the release workflow) is the natural next step and purely
+additive: the generated artifact is the same either way, and only the URL
+written into new manifests changes.
 
 #### First run: no manifest
 
@@ -177,7 +226,7 @@ No naijacloud.json here — a few questions, then this is the last time.
 
 Deploying dist (18 files, 2.1 MB)…
 ✓ https://acme-marketing.naijacloud.com
-✓ Wrote naijacloud.json (+ .naijacloud/schema.json for your editor)
+✓ Wrote naijacloud.json
   Next time, just `naijacloud deploy`.
 ```
 
@@ -293,23 +342,92 @@ naijacloud logs [service]         last N lines, then exit
 This is the largest functional hole in the current CLI: a capability the product
 has, that only the dashboard can reach.
 
-### 3.3 Terminal verbs for what MCP already does
+### 3.3 Terminal verbs for what MCP already does ✅
 
-The API layer in [`src/api-client.ts`](src/api-client.ts) already implements
-most of this — it needs a command layer, not new transport code.
+**Status: implemented.** `src/commands/{projects,services,deployments,env,domains}.ts`
+(the verbs), `src/commands/resolve.ts` (name → id), `src/output.ts` (tables and
+`--json`), `src/commands/wait.ts` (the deployment poll, now shared with
+`deploy`). Four operations were missing from the API layer and were added:
+`myServices`, `deleteEnvVar`, `verifyCustomDomain`, `removeCustomDomain`.
 
 ```
-naijacloud projects [ls|show <id>]
-naijacloud services ls                    # myServices — flat, no traversal
-naijacloud deploy <service> [--wait]      # triggerDeploy + poll to RUNNING/FAILED
-naijacloud deployments [--service|--project]
+naijacloud projects ls|show <project>
+naijacloud services ls [--project] | show <service>
+naijacloud redeploy <service> [--no-wait]   # triggerDeploy + poll to RUNNING/FAILED
+naijacloud deployments ls|show|logs|cancel [--service|--project] [--limit]
 naijacloud cancel <deployment>
 naijacloud env ls|set|rm
 naijacloud domains ls|add|verify|rm
 ```
 
-Every command needs `--json` for scripting and meaningful exit codes (non-zero on
-`FAILED`, so CI can gate on `deploy --wait`).
+Every command takes `--json` and writes its result to stdout with prompts and
+progress on stderr, and every failure exits non-zero — `redeploy` waits by
+default, so it gates a CI job on its own.
+
+Three things the design settled that this section had left open:
+
+- **`deploy <service>` became `redeploy <service>`.** §3.1 had already taken
+  `deploy` for the static pipeline, and the two verbs take different things — a
+  directory versus a service. Overloading one name on "is this an existing
+  path?" picks the wrong one exactly when a repo has a directory named after its
+  service.
+- **Names, not just UUIDs.** Every `<service>` and `<project>` accepts a name, an
+  id, or `project/name`; ids are recognised by shape, so the scripted case costs
+  no extra request. An ambiguous name is an error listing the candidates, never a
+  guess. This is most of what §3.4 promised, without the `link` command — and
+  where a `naijacloud.json` already names a `serviceId`, `--service` is optional.
+- **`env ls` masks values by default**, `--reveal` opts in. The platform returns
+  them in full; the risk is a shared screen or a build log, not the caller.
+  `env set KEY` with no value reads from a hidden prompt or stdin, keeping
+  credentials out of shell history and the process table.
+
+### 3.3a `naijacloud project` — the interactive tree ✅
+
+**Status: implemented.** `src/commands/project.ts` (the navigator),
+`src/interactive.ts` (arrow-key selection), `src/api/environments.ts`
+(environment and datastore creation), plus `getProjectTree` and
+`getServiceConnection` in `src/api/projects.ts`.
+
+§3.3 gave every resource a verb. This gives them a place, and corrects a
+modelling error that ran through the earlier sections: **the environment is a
+level, not an attribute.** A service belongs to an environment inside a project,
+never to the project directly, and which environment it is decides whether
+touching it is a production act. Flattening the two hides exactly the fact a
+person needs before pressing redeploy.
+
+```
+Project ──< Environment ──< Service ──< deployments · variables · domains
+                                     └─< connection (datastores)
+```
+
+One screen per level, each re-read on entry so a change lower down is visible
+higher up. The environment screen carries the same banner the dashboard shows —
+region, replicas, traffic status — because that is what distinguishes two
+environments whose names are otherwise just words.
+
+**The leaf is type-aware**, following the dashboard's own split
+(`web-service` / `cron-service` / `datastore-service` / `redis-panel`):
+
+| | Overview | Deploys | Variables | Domains | Connection | Redeploy |
+| --- | --- | --- | --- | --- | --- | --- |
+| WEB | ✅ | ✅ | ✅ | ✅ | — | ✅ |
+| CRON | ✅ | ✅ | ✅ | — | — | ✅ |
+| STATIC | ✅ | ✅ | ✅ | ✅ | — | via `deploy` |
+| Datastores | ✅ | — | — | — | ✅ | — |
+
+Capabilities the API cannot back yet — runtime logs (§3.2), the SQL console
+(§3.5), backups and previews (Tier 2) — are **listed and disabled** rather than
+hidden, so the menu doubles as an honest map of what is built. §3.5 slots into
+the datastore leaf as a menu entry, which is the whole reason it is shaped this
+way.
+
+Creation is scoped the same way: *New environment* on a project, *New database*
+on an environment (`createService` with a datastore `type`; credentials are left
+for the platform to generate rather than prompted for).
+
+Everything is a view onto the §3.3 operations — no second implementation, and no
+route around the masking, so a database password takes the same deliberate
+keypress that `env ls --reveal` does.
 
 ### 3.4 Project linking
 
@@ -372,14 +490,14 @@ Note the region constraint in §6.
 | `env pull` / `env push` | `serviceEnvVars`, `setEnvVars` | `setEnvVars` takes an array; the CLI currently sends one entry at a time. `.env` round-trip is the point. |
 | `env rm` | `deleteEnvVar` | Exists in the API, missing from **both** CLI and MCP. |
 | `secrets ls/set/rm` | `serviceSecretFiles`, `setSecretFile`, `deleteSecretFile` | Entirely absent today. |
-| `init` / `services create` | `detectBuild`, `createService`, `createDatastoreService`, `deployLocations` | `detectBuild` infers framework, runtime, build/start commands, port, package manager and monorepo strategy from a repo + `rootDir` — a guided scaffold writes itself. `createDatastoreService` returns generated credentials. |
+| `init` / `services create` | `detectBuild`, `createService`, `deployLocations` | `detectBuild` infers framework, runtime, build/start commands, port, package manager and monorepo strategy from a repo + `rootDir` — a guided scaffold writes itself. **Datastore creation is already done** (`project` → *New database*); what is left is the web/cron half, which is where the large half of `CreateServiceInput` lives. |
 | `cron run/runs/logs/pause/resume/edit` | `runCronJob`, `cronRuns`, `cronRunLogs`, `setCronJobSuspended`, `updateCronJob`, `cronStats` | Run output streams over `joinCronRun` → `cronRun.log` / `cronRun.update`. Cron output is log-shaped; the terminal is its home. |
 | `backups list/run/restore/download/schedule` | `backups`, `runBackupNow`, `restoreBackup`, `backupDownloadUrl`, `setBackupFrequency`, `deleteBackup` | Scriptable backups are a CI-native need. |
 | `previews ls/enable/disable/teardown` | `servicePreviews`, `setServicePreviewsEnabled`, `teardownPreview` | Useful inside PR automation. |
 | `scale` | `updateServiceResources(tier: STARTER \| STANDARD \| PRO)` | |
 | `region set` | `updateServiceRegion`, `deployLocations` | Triggers a full rebuild in the new region. |
 | `metrics` / `top` | `serviceMetrics(range: LAST_30_MIN…LAST_30D)`, `liveServiceStats`, `webHeadlineMetrics` | `top` as a live resource view; headline metrics give RPS / p95 / error rate. |
-| `connect <db>` | `serviceConnectionDetails` | Returns scheme/host/port/user/password/`url`/`externalUrl` — shelling straight into `psql` / `redis-cli` is a genuinely nice touch. |
+| `connect <db>` | `Service.connection` | ~~`serviceConnectionDetails`~~ does not exist; the credentials are a **field on `Service`** — `connection { scheme host port username password database url externalUrl }`. Already surfaced in `project` → *Connection details*; what is left is shelling straight into `psql` / `redis-cli`. |
 | `service settings` | `updateServiceBuild`, `updateServiceSource`, `disconnectServiceRepo` | Build command, start command, runtime, port, rootDir, watch paths, repo/branch re-pointing. |
 
 ---
@@ -450,10 +568,20 @@ so an agent cannot report a conflicting record it should tell the user to remove
 
 ## 8. Suggested order
 
-1. **Foundation** — command layer, `link` + name resolution, `--json`, exit codes.
-   Tier 1 items 3.1, 3.2, 3.5 and 3.6 all sit on top of it.
-2. **`deploy` (static) + `logs --follow`** — the two capabilities the dashboard
-   cannot match.
-3. **Parity verbs** — projects / services / env / domains / deployments.
-4. **`db` and `storage`** — the two terminal-native subsystems.
-5. **Tier 2**, then Tier 3 as demand appears.
+1. ~~**Foundation** — command layer, `link` + name resolution, `--json`, exit
+   codes.~~ ✅ Done in §3.3, except the `link`/`unlink` commands themselves:
+   name resolution and the manifest default cover what they were for, so §3.4 is
+   now a smaller job than it looks (`--env` resolution and `projectId` /
+   `environmentId` in the manifest are what is left).
+2. **`deploy` (static)** ✅ (§3.1) **+ `logs --follow`** 🔴 (§3.2) — the two
+   capabilities the dashboard cannot match. `logs --follow` is now the single
+   largest hole, and the only Tier 1 item needing transport the CLI does not
+   already have (socket.io).
+3. ~~**Parity verbs** — projects / services / env / domains / deployments.~~ ✅
+   Done in §3.3.
+4. **`db` and `storage`** — the two terminal-native subsystems. Both sit on the
+   command layer §3.3 built, so they are now additive: an operations module plus
+   a command file each.
+5. **§7's near-free MCP tools** — the API layer already has four of them; this is
+   an afternoon, and it stops the agent surface trailing the CLI.
+6. **Tier 2**, then Tier 3 as demand appears.

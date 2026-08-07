@@ -70,11 +70,79 @@ export interface ServiceSummary {
   isStatic: boolean;
 }
 
+/**
+ * A row from `myServices` — every service the caller can reach, in one call and
+ * with no project traversal.
+ *
+ * Deliberately thin: the platform's `MyService` type carries only these four
+ * fields, so status, health and URL need `getService`. It exists to answer
+ * "what am I allowed to touch, and what is it called", which is exactly what
+ * name resolution needs.
+ */
+export interface MyService {
+  id: string;
+  name: string;
+  projectName: string;
+  type: ServiceType;
+}
+
+/**
+ * The per-environment banner the dashboard shows above its service list:
+ * where the environment runs and whether anything is serving from it.
+ */
+export interface EnvironmentStats {
+  region: string | null;
+  regionKey: string | null;
+  replicas: number;
+  trafficStatus: string;
+}
+
 export interface EnvironmentSummary {
   id: string;
   name: string;
   isPreview: boolean;
   services: ServiceSummary[];
+  /** Absent from the lighter project reads; present in the navigator's. */
+  summary?: EnvironmentStats;
+}
+
+/**
+ * Credentials for a datastore service.
+ *
+ * A field on `Service`, not the standalone `serviceConnectionDetails` query the
+ * gap analysis assumed — that query does not exist. `password` is returned in
+ * full, so masking is the caller's job exactly as it is for env vars.
+ */
+export interface ServiceConnection {
+  scheme: string;
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  database: string;
+  url: string;
+  externalUrl: string | null;
+}
+
+/** Service types that hold data rather than serve HTTP. */
+export const DATASTORE_TYPES: ReadonlySet<ServiceType> = new Set<ServiceType>([
+  "POSTGRES",
+  "MYSQL",
+  "MARIADB",
+  "MONGODB",
+  "REDIS",
+  "VALKEY",
+]);
+
+/** The datastores that speak SQL, and so can back a query console (§3.5). */
+export const SQL_TYPES: ReadonlySet<ServiceType> = new Set<ServiceType>([
+  "POSTGRES",
+  "MYSQL",
+  "MARIADB",
+]);
+
+export function isDatastore(type: ServiceType): boolean {
+  return DATASTORE_TYPES.has(type);
 }
 
 export interface Project {

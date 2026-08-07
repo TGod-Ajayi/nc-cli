@@ -4,23 +4,45 @@
  * The schema is *generated from the zod object that validates the file*, so the
  * two cannot drift: what an editor autocompletes is exactly what the CLI
  * accepts. `npm run build` writes the same document to
- * `schema/naijacloud.schema.json`, which ships inside the package.
+ * `schema/naijacloud.schema.json`, which ships inside the package and is served
+ * from the public repo at every release tag.
  *
- * There is no hosted schema URL on purpose. Completion should work offline,
- * behind a proxy, and for a CLI release that is a few versions old — a remote
- * `$ref` gives none of that, and would pin every repo to whatever the website
- * happens to be serving rather than to the binary that parses the file.
+ * `$schema` points at that hosted copy, *pinned to the version that wrote the
+ * manifest* rather than to `main`. The pin is the whole point: an unpinned URL
+ * would complete keys from unreleased code against a CLI that rejects them,
+ * whereas an older pin degrades to fewer completions and never to false errors,
+ * because the format is additive-only. CI fails the build when the committed
+ * schema and the generator disagree, so `v<version>` is exactly what that
+ * binary parses. The CLI never fetches it — zod does the validating, offline,
+ * always.
+ *
+ * A URL does cost something: an editor with no route to GitHub gets no
+ * completion, and opening a committed file now touches the network. `schema
+ * --write` is the escape hatch — it drops the document next to the manifest and
+ * repoints `$schema` at that copy, which is then what init and deploy keep
+ * refreshing.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import process from "node:process";
 
 import { z } from "zod";
 
-import { CLIENT_VERSION } from "../api/index.js";
-import { LOCAL_SCHEMA_PATH, MANIFEST_FILENAME, STATE_DIR, manifestSchema } from "../deploy-static/manifest.js";
+import { CLIENT_VERSION, UNKNOWN_VERSION } from "../api/index.js";
+import {
+  LOCAL_SCHEMA_PATH,
+  MANIFEST_FILENAME,
+  STATE_DIR,
+  manifestSchema,
+  readManifest,
+  writeManifest,
+} from "../deploy-static/manifest.js";
+import type { Manifest } from "../deploy-static/manifest.js";
 import { write } from "../terminal.js";
+
+/** Public repository the released schema is served from. */
+const SCHEMA_REPO = "TGod-Ajayi/nc-cli";
 
 /** Builds the JSON Schema document for the manifest. */
 export function manifestJsonSchema(): Record<string, unknown> {
@@ -40,8 +62,27 @@ export function schemaJson(): string {
 }
 
 /**
- * Writes the editor copy next to the manifest, plus a `.gitignore` that hides
- * the whole state directory.
+ * URL of the schema for a given CLI version — what new manifests get as their
+ * `$schema`.
+ *
+ * Every published version is a `v*` tag on the public repo, so the pin always
+ * resolves. `main` is the fallback for a build whose version could not be
+ * resolved at all: there is no tag to name in that case, and pointing at a
+ * branch beats pointing at a 404.
+ */
+export function remoteSchemaUrl(version: string = CLIENT_VERSION): string {
+  const ref = version === UNKNOWN_VERSION ? "main" : `v${version}`;
+  return `https://raw.githubusercontent.com/${SCHEMA_REPO}/${ref}/schema/naijacloud.schema.json`;
+}
+
+/** Whether a `$schema` value is fetched over the network rather than read from disk. */
+function isRemote(link: string): boolean {
+  return /^https?:\/\//i.test(link);
+}
+
+/**
+ * Writes the local copy of the schema, plus a `.gitignore` that hides the whole
+ * state directory.
  *
  * Ignoring itself is deliberate: the alternative is editing the user's root
  * `.gitignore`, and a tool that rewrites a file it does not own is a tool people
@@ -60,10 +101,51 @@ export function writeLocalSchema(dir: string): string {
 }
 
 /**
- * `naijacloud schema` — print the JSON Schema, or write the local copy.
+ * Refreshes a local copy of the schema when — and only when — the manifest
+ * already links to one.
+ *
+ * New manifests point at the hosted URL, so for them this does nothing and no
+ * directory appears. Repos configured by an older CLI, or by `schema --write`,
+ * keep a relative `$schema`, and those keep getting a current copy on every init
+ * and deploy. A copy someone deleted stays deleted: this refreshes what is
+ * there, it never recreates.
+ */
+export function refreshLinkedLocalSchema(dir: string, manifest: Manifest): void {
+  const link = manifest.$schema;
+  if (link === undefined || isRemote(link)) return;
+
+  const target = resolve(dir, link);
+  if (!existsSync(target)) return;
+  writeFileSync(target, schemaJson(), "utf8");
+}
+
+/**
+ * Points the manifest in `dir` at a local schema file, so the copy just written
+ * is the one the editor actually reads. Returns the path recorded, or null when
+ * there is no manifest to edit or it already said the same thing.
+ */
+function linkManifestToSchema(dir: string, schemaPath: string): string | null {
+  const manifestPath = join(dir, MANIFEST_FILENAME);
+  if (!existsSync(manifestPath)) return null;
+
+  // JSON Schema references are URI paths; on Windows `relative` yields
+  // backslashes, which no editor resolves.
+  const link = relative(dir, schemaPath).split(sep).join("/");
+
+  const { manifest } = readManifest(manifestPath);
+  if (manifest.$schema === link) return null;
+
+  writeManifest(manifestPath, { ...manifest, $schema: link });
+  return link;
+}
+
+/**
+ * `naijacloud schema` — print the JSON Schema, or write a local copy.
  *
  * `--write` with no value writes `.naijacloud/schema.json`; `--write <path>`
  * puts it wherever the caller wants, for teams that would rather commit it.
+ * Either way the manifest is repointed at the copy, because a local schema
+ * nothing references is a file that silently goes stale.
  */
 export function schemaCommand(options: { write?: string | undefined }): void {
   if (options.write === undefined) {
@@ -71,14 +153,21 @@ export function schemaCommand(options: { write?: string | undefined }): void {
     return;
   }
 
+  let target: string;
+  let label: string;
+
   if (options.write === "") {
-    const written = writeLocalSchema(process.cwd());
-    write(`Wrote ${written}\n`);
-    return;
+    label = writeLocalSchema(process.cwd());
+    target = join(process.cwd(), label);
+  } else {
+    target = resolve(process.cwd(), options.write);
+    label = target;
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, schemaJson(), "utf8");
   }
 
-  const target = resolve(process.cwd(), options.write);
-  mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, schemaJson(), "utf8");
-  write(`Wrote ${target}\n`);
+  write(`Wrote ${label}\n`);
+
+  const linked = linkManifestToSchema(process.cwd(), target);
+  if (linked) write(`Pointed ${MANIFEST_FILENAME} at it ($schema: ${linked}).\n`);
 }

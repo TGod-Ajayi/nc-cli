@@ -51,3 +51,26 @@ export async function addDomain(serviceId: string, domain: string): Promise<Cust
   );
   return data.addCustomDomain;
 }
+
+/**
+ * Re-runs the DNS check now rather than waiting for the platform's own sweep.
+ *
+ * Returns the domain in whatever state the check left it: still PENDING when
+ * DNS has not propagated yet, which is not an error — it is the answer.
+ */
+export async function verifyDomain(domainId: string): Promise<CustomDomain> {
+  const data = await authed<{ verifyCustomDomain: CustomDomain }>(
+    `mutation VerifyCustomDomain($id: ID!) { verifyCustomDomain(id: $id) { ${DOMAIN_FIELDS} } }`,
+    { id: domainId },
+  );
+  return data.verifyCustomDomain;
+}
+
+/** Detaches a custom domain. The service keeps serving on its *.naijacloud.com URL. */
+export async function removeDomain(domainId: string): Promise<boolean> {
+  const data = await authed<{ removeCustomDomain: boolean }>(
+    `mutation RemoveCustomDomain($id: ID!) { removeCustomDomain(id: $id) }`,
+    { id: domainId },
+  );
+  return data.removeCustomDomain;
+}

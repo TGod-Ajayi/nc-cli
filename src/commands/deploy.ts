@@ -25,10 +25,11 @@ import { basename, join, relative, resolve } from "node:path";
 import process from "node:process";
 
 import {
+  createStaticService,
   createStaticUpload,
   deployStaticSite,
-  getDeploymentStatus,
   getStaticSite,
+  listDeploymentsByService,
   redeployStaticSite,
   siteUrl,
   uploadToPresigned,
@@ -37,7 +38,6 @@ import type { DeploymentStatus, StaticSite } from "../api/index.js";
 import {
   MANIFEST_FILENAME,
   MANIFEST_VERSION,
-  LOCAL_SCHEMA_PATH,
   detectLocal,
   findManifest,
   readManifest,
@@ -47,8 +47,10 @@ import {
 import type { Manifest } from "../deploy-static/manifest.js";
 import { askManifestBasics } from "../deploy-static/configure.js";
 import { programName } from "../program-name.js";
+import { resolveEnvironmentId } from "./resolve.js";
 import { isInteractive, requireTty, write } from "../terminal.js";
-import { writeLocalSchema } from "./schema.js";
+import { refreshLinkedLocalSchema, remoteSchemaUrl } from "./schema.js";
+import { waitForDeployment } from "./wait.js";
 import { createZip } from "../deploy-static/zip.js";
 
 export interface DeployOptions {
@@ -62,26 +64,13 @@ export interface DeployOptions {
   prebuilt: boolean;
   /** Create a new site even when the manifest already names one. */
   createNew: boolean;
+  /** Environment to create the site in, as an id or `project/environment`. */
+  env: string | undefined;
   /** Accept every detected default instead of prompting. */
   yes: boolean;
   json: boolean;
   /** Wait for the deployment to reach a terminal state. */
   wait: boolean;
-}
-
-/** Deployment states that will not change again without another deploy. */
-const TERMINAL: ReadonlySet<DeploymentStatus> = new Set<DeploymentStatus>([
-  "RUNNING",
-  "FAILED",
-  "CANCELLED",
-  "SUPERSEDED",
-]);
-
-const POLL_INTERVAL_MS = 2_000;
-
-function deployTimeoutMs(): number {
-  const raw = Number(process.env["NAIJACLOUD_DEPLOY_TIMEOUT_MS"]);
-  return Number.isFinite(raw) && raw > 0 ? raw : 900_000;
 }
 
 function formatBytes(bytes: number): string {
@@ -95,9 +84,6 @@ function formatBytes(bytes: number): string {
   }
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
 }
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 
 /* -------------------------------------------------------------------------- */
 /* Configuration                                                              */
@@ -118,6 +104,8 @@ interface ResolvedConfig {
   index: string | undefined;
   ignore: string[];
   serviceId: string | undefined;
+  /** Environment to create the site in. Undefined lets the platform place it. */
+  environmentId: string | undefined;
 }
 
 function envValue(key: string): string | undefined {
@@ -157,6 +145,15 @@ async function resolveConfig(options: DeployOptions): Promise<ResolvedConfig> {
   const serviceId = options.createNew
     ? undefined
     : envValue("NAIJACLOUD_SERVICE_ID") ?? manifest.serviceId;
+
+  // Only consulted when creating a site; a redeploy goes to whichever
+  // environment the existing service already lives in.
+  const environmentRef =
+    options.env ?? envValue("NAIJACLOUD_ENVIRONMENT_ID") ?? manifest.environmentId;
+  const environmentId =
+    environmentRef === undefined || serviceId !== undefined
+      ? undefined
+      : await resolveEnvironmentId(environmentRef);
 
   const detected = detectLocal(root);
 
@@ -210,6 +207,7 @@ async function resolveConfig(options: DeployOptions): Promise<ResolvedConfig> {
     index,
     ignore,
     serviceId,
+    environmentId,
   };
   return config;
 }
@@ -308,43 +306,6 @@ function buildBundle(config: ResolvedConfig): Bundle {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Release                                                                    */
-/* -------------------------------------------------------------------------- */
-
-/** Polls until the deployment settles, reporting each state change. */
-async function waitForDeployment(
-  deploymentId: string,
-  initial: DeploymentStatus,
-): Promise<{ status: DeploymentStatus; error: string | null }> {
-  let status = initial;
-  let error: string | null = null;
-  write(`  ${status}\n`);
-
-  const deadline = Date.now() + deployTimeoutMs();
-
-  while (!TERMINAL.has(status)) {
-    if (Date.now() > deadline) {
-      throw new Error(
-        `Timed out waiting for deployment ${deploymentId} (last status ${status}). ` +
-          "The build is still running — check the dashboard, or raise " +
-          "NAIJACLOUD_DEPLOY_TIMEOUT_MS.",
-      );
-    }
-
-    await sleep(POLL_INTERVAL_MS);
-    const current = await getDeploymentStatus(deploymentId);
-
-    if (current.status !== status) {
-      status = current.status;
-      write(`  ${status}\n`);
-    }
-    error = current.error;
-  }
-
-  return { status, error };
-}
-
-/* -------------------------------------------------------------------------- */
 /* Command                                                                    */
 /* -------------------------------------------------------------------------- */
 
@@ -380,7 +341,35 @@ export async function deploy(options: DeployOptions): Promise<void> {
   let status: DeploymentStatus;
   const created = config.serviceId === undefined;
 
-  if (config.serviceId === undefined) {
+  if (config.serviceId === undefined && config.environmentId !== undefined) {
+    // Environment-targeted creation. `deployStaticSite` cannot do this — its
+    // input carries no environmentId, so it always lands wherever the platform
+    // decides. `createService` is the only mutation that places a static site
+    // in a chosen environment, which is what makes a static site an ordinary
+    // member of the project tree rather than an orphan beside it.
+    const input: Parameters<typeof createStaticService>[0] = {
+      environmentId: config.environmentId,
+      name: config.name,
+      staticUploadId: slot.uploadId,
+      staticSpa: config.spa,
+    };
+    if (config.index !== undefined) input.staticIndexPath = config.index;
+
+    const service = await createStaticService(input);
+    // createService returns the service, not a deployment, so the first build
+    // has to be located rather than handed over.
+    const first = (await listDeploymentsByService(service.id))[0];
+    if (!first) {
+      throw new Error(
+        `Created ${service.name}, but no build was queued for it. Check the ` +
+          "dashboard before deploying again.",
+      );
+    }
+    deploymentId = first.id;
+    status = first.status;
+    site = await getStaticSite(service.id);
+    write(`Created site ${service.name} in the target environment\n`);
+  } else if (config.serviceId === undefined) {
     const input: Parameters<typeof deployStaticSite>[0] = {
       uploadId: slot.uploadId,
       name: config.name,
@@ -464,7 +453,7 @@ export async function deploy(options: DeployOptions): Promise<void> {
       write(`Deployment ${deploymentId} queued; not waiting (--no-wait).\n`);
     }
     if (manifestWritten) {
-      write(`Wrote ${MANIFEST_FILENAME} (+ ${LOCAL_SCHEMA_PATH} for your editor)\n`);
+      write(`Wrote ${MANIFEST_FILENAME}\n`);
       write(
         created
           ? // Without the committed serviceId, the next run has no way to know
@@ -486,10 +475,13 @@ function persistManifest(config: ResolvedConfig, serviceId: string): boolean {
   const previous = config.manifest;
   const next: Manifest = { ...previous };
 
-  next.$schema = previous.$schema ?? LOCAL_SCHEMA_PATH;
+  next.$schema = previous.$schema ?? remoteSchemaUrl();
   next.version = previous.version ?? MANIFEST_VERSION;
   next.name = previous.name ?? config.name;
   next.serviceId = serviceId;
+  if (config.environmentId !== undefined) {
+    next.environmentId = previous.environmentId ?? config.environmentId;
+  }
   next.output = previous.output ?? config.output;
   next.spa = previous.spa ?? config.spa;
   if (config.build !== undefined) next.build = previous.build ?? config.build;
@@ -499,6 +491,6 @@ function persistManifest(config: ResolvedConfig, serviceId: string): boolean {
   if (unchanged) return false;
 
   writeManifest(config.manifestPath, next);
-  writeLocalSchema(config.root);
+  refreshLinkedLocalSchema(config.root, next);
   return true;
 }

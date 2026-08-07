@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 /**
- * `naijacloud` entrypoint — dispatches login / logout / whoami / mcp.
+ * `naijacloud` entrypoint — argument parsing and dispatch.
  *
  * Installed under two names: `naijacloud` and the shorter `njc`. Both are the
  * same executable, so every command below works either way.
  *
  * Under `naijacloud mcp` stdout is owned by the MCP protocol, so this file
  * writes help, errors and diagnostics to stderr and keeps stdout for command
- * output only.
+ * output only. The resource commands hold to the same split for a different
+ * reason: their result goes to stdout so `--json` stays pipeable, and progress
+ * and prompts go to stderr so they do not corrupt it.
+ *
+ * Command modules are imported lazily. `login` and `whoami` should not pay to
+ * load zod, the archive machinery or the MCP SDK.
  */
 
 import process from "node:process";
@@ -20,16 +25,56 @@ import { ALIAS, PROGRAM, programName } from "./program-name.js";
 /** Column where every description starts, matching the option lists below. */
 const DESCRIPTION_COLUMN = 28;
 
-const COMMANDS: ReadonlyArray<readonly [string, string]> = [
-  ["login [options]", "Authenticate and store credentials (mode 0600)"],
-  ["logout", "Delete stored credentials"],
-  ["whoami", "Show the authenticated account"],
-  ["init [dir]", "Write a naijacloud.json, without deploying"],
-  ["deploy [dir]", "Build, upload and release a static site"],
-  ["schema [--write]", "Print the naijacloud.json JSON Schema"],
-  ["mcp", "Run the MCP server over stdio"],
-  ["--help", "Show this message"],
-  ["--version", "Show the version"],
+/**
+ * The command list, grouped.
+ *
+ * Grouped rather than flat because the surface has outgrown a single list: the
+ * three sections are "get in", "ship something" and "inspect or change what is
+ * already there", which is the order someone meets them in.
+ */
+const GROUPS: ReadonlyArray<readonly [string, ReadonlyArray<readonly [string, string]>]> = [
+  [
+    "Auth",
+    [
+      ["login [options]", "Authenticate and store credentials (mode 0600)"],
+      ["logout", "Delete stored credentials"],
+      ["whoami", "Show the authenticated account"],
+    ],
+  ],
+  [
+    "Ship",
+    [
+      ["deploy [dir]", "Build, upload and release a static site"],
+      ["redeploy [service]", "Rebuild a repo-connected service from its branch"],
+      ["init [dir]", "Write a naijacloud.json, without deploying"],
+      ["schema [--write]", "Print the naijacloud.json JSON Schema"],
+    ],
+  ],
+  [
+    "Explore",
+    [
+      ["project [name|id]", "Interactive: environments, services, actions"],
+    ],
+  ],
+  [
+    "Resources",
+    [
+      ["projects ls|show", "Projects, environments and their services"],
+      ["services ls|show", "Services this account can reach"],
+      ["deployments ls|show|logs", "Deployment history and build output"],
+      ["cancel <deployment>", "Stop an in-flight deployment"],
+      ["env ls|set|rm", "Environment variables on a service"],
+      ["domains ls|add|verify|rm", "Custom domains on a service"],
+    ],
+  ],
+  [
+    "Other",
+    [
+      ["mcp", "Run the MCP server over stdio"],
+      ["--help", "Show this message"],
+      ["--version", "Show the version"],
+    ],
+  ],
 ];
 
 /**
@@ -37,15 +82,38 @@ const COMMANDS: ReadonlyArray<readonly [string, string]> = [
  * both `naijacloud` and the seven-characters-shorter `njc`.
  */
 function usage(program: string): string {
-  const lines = COMMANDS.map(([command, description]) => {
-    const label = `${program} ${command}`;
-    return `  ${label.padEnd(DESCRIPTION_COLUMN)} ${description}`;
-  }).join("\n");
+  const lines = GROUPS.map(
+    ([title, commands]) =>
+      `${title}\n` +
+      commands
+        .map(([command, description]) => `  ${command.padEnd(DESCRIPTION_COLUMN)} ${description}`)
+        .join("\n"),
+  ).join("\n\n");
 
   return `${program} — CLI and MCP server for NaijaCloud hosting
 
 Usage
+  ${program} <command> [options]
+
 ${lines}
+
+Resource options
+  --service <name|id>          Target service; defaults to naijacloud.json's
+  --project <name|id>          Target project, where a command accepts one
+  --json                       Machine-readable result on stdout
+  --yes                        Skip the confirmation prompt
+  --limit <n>                  Cap how many rows are returned
+
+  Services and projects are named or referenced by id. Where one name matches
+  two services, qualify it as project/name.
+
+Env options
+  --reveal                     Print values, which are masked by default
+  --scope <all|prod|uat|dev>   Scope to write (default prod; uat = preview)
+  --secret                     Mark the variable as a secret on the platform
+
+  \`env set KEY\` with no value reads it from a hidden prompt, or from stdin
+  when piped — so a credential need not land in your shell history.
 
 Login options
   --email <email>              Email, instead of being prompted
@@ -65,6 +133,8 @@ Deploy options
   --spa / --no-spa             Serve the entry file for unmatched paths
   --prebuilt                   Skip the manifest's build command
   --new                        Create a new site, ignoring the manifest's serviceId
+  --env <project/environment>  Environment to create the site in. Without it the
+                               platform places the site itself.
   --yes                        Accept detected defaults instead of prompting
   --no-wait                    Return once queued, without waiting for the build
   --json                       Machine-readable result on stdout
@@ -72,8 +142,18 @@ Deploy options
   Configuration is read from naijacloud.json; the first deploy asks for what
   it needs and writes the file, so later runs take no arguments at all.
 
+Redeploy options
+  --no-wait                    Return once queued, without waiting for the build
+  --json                       Machine-readable result on stdout
+
+  Builds the service's own configured branch — there is no per-deploy branch
+  or commit override. Waits by default, and exits non-zero if the build fails,
+  so \`${program} redeploy api\` gates a CI job on its own.
+
 Schema options
-  --write [path]               Write the schema (default .naijacloud/schema.json)
+  --write [path]               Write a local copy and point naijacloud.json at
+                               it, for editors that cannot reach the hosted
+                               schema (default .naijacloud/schema.json)
 
 Environment
   ${TOKEN_ENV_VAR}            Access token; overrides the stored credentials
@@ -151,6 +231,21 @@ const DEPLOY_BOOLEANS = new Set([
 ]);
 
 /**
+ * Valueless flags shared by the resource commands.
+ *
+ * `--service` and `--project` are deliberately absent: they take a value, and
+ * listing them here would make `--service api` swallow `api` as a positional.
+ */
+const RESOURCE_BOOLEANS = new Set([
+  "json",
+  "yes",
+  "reveal",
+  "secret",
+  "wait",
+  "no-wait",
+]);
+
+/**
  * Reads a `--x` / `--no-x` pair as a tri-state: explicitly on, explicitly off,
  * or unspecified so a lower-priority source (manifest, detection) decides.
  */
@@ -158,6 +253,49 @@ function tristate(flags: Map<string, string>, name: string): boolean | undefined
   if (flags.has(`no-${name}`)) return false;
   if (flags.has(name)) return true;
   return undefined;
+}
+
+/** An optional flag value, with empty treated as absent. */
+function value(flags: Map<string, string>, name: string): string | undefined {
+  return flags.get(name) || undefined;
+}
+
+/** A positive integer flag, rejected loudly rather than silently ignored. */
+function count(flags: Map<string, string>, name: string): number | undefined {
+  const raw = flags.get(name);
+  if (raw === undefined || raw === "") return undefined;
+
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`--${name} must be a positive whole number, not '${raw}'.`);
+  }
+  return parsed;
+}
+
+/**
+ * Requires the argument a subcommand cannot run without, naming what it wanted.
+ * The message is the only place a user finds the shape of the command without
+ * going back to `--help`.
+ */
+function required(
+  argument: string | undefined,
+  what: string,
+  example: string,
+): string {
+  if (argument === undefined || argument === "") {
+    throw new Error(`${what} is required.\n  ${programName()} ${example}`);
+  }
+  return argument;
+}
+
+/** Rejects an unknown or missing subcommand, listing the ones that exist. */
+function unknownSubcommand(command: string, subcommand: string | undefined, valid: string[]): Error {
+  const listed = valid.join(", ");
+  return new Error(
+    subcommand === undefined
+      ? `${command} needs a subcommand: ${listed}.\n  ${programName()} ${command} ${valid[0]}`
+      : `Unknown ${command} subcommand '${subcommand}'. Use one of: ${listed}.`,
+  );
 }
 
 async function main(): Promise<void> {
@@ -230,11 +368,206 @@ async function main(): Promise<void> {
         spa: tristate(flags, "spa"),
         prebuilt: flags.has("prebuilt"),
         createNew: flags.has("new"),
+        env: value(flags, "env"),
         yes: flags.has("yes"),
         json: flags.has("json"),
         wait: tristate(flags, "wait") ?? true,
       });
       return;
+    }
+
+    case "redeploy": {
+      const { flags, positionals } = parseArgs(rest, RESOURCE_BOOLEANS);
+      const { redeploy } = await import("./commands/deployments.js");
+
+      await redeploy({
+        // Positional or --service, so both `redeploy api` and
+        // `redeploy --service api` work; neither means "whatever this
+        // directory is linked to".
+        service: positionals[0] ?? value(flags, "service"),
+        wait: tristate(flags, "wait") ?? true,
+        json: flags.has("json"),
+      });
+      return;
+    }
+
+    // Singular `project` is the interactive view; plural `projects` is the
+    // scriptable listing. The two are different jobs, not two spellings.
+    case "project": {
+      const { positionals } = parseArgs(rest, RESOURCE_BOOLEANS);
+      const { projectCommand } = await import("./commands/project.js");
+
+      await projectCommand({ reference: positionals[0] });
+      return;
+    }
+
+    case "projects": {
+      const { flags, positionals } = parseArgs(rest, RESOURCE_BOOLEANS);
+      const { projectsList, projectsShow } = await import("./commands/projects.js");
+      const options = { json: flags.has("json") };
+
+      switch (positionals[0]) {
+        case "ls":
+        case "list":
+          await projectsList(options);
+          return;
+        case "show":
+          await projectsShow(
+            required(positionals[1], "A project", "projects show <name|id>"),
+            options,
+          );
+          return;
+        default:
+          throw unknownSubcommand("projects", positionals[0], ["ls", "show"]);
+      }
+    }
+
+    case "services": {
+      const { flags, positionals } = parseArgs(rest, RESOURCE_BOOLEANS);
+      const { servicesList, servicesShow } = await import("./commands/services.js");
+      const options = { json: flags.has("json"), project: value(flags, "project") };
+
+      switch (positionals[0]) {
+        case "ls":
+        case "list":
+          await servicesList(options);
+          return;
+        case "show":
+          await servicesShow(
+            required(positionals[1], "A service", "services show <name|id>"),
+            options,
+          );
+          return;
+        default:
+          throw unknownSubcommand("services", positionals[0], ["ls", "show"]);
+      }
+    }
+
+    case "deployments": {
+      const { flags, positionals } = parseArgs(rest, RESOURCE_BOOLEANS);
+      const { deploymentsCancel, deploymentsList, deploymentsLogs, deploymentsShow } =
+        await import("./commands/deployments.js");
+      const json = flags.has("json");
+
+      switch (positionals[0]) {
+        case "ls":
+        case "list":
+          await deploymentsList({
+            service: value(flags, "service"),
+            project: value(flags, "project"),
+            limit: count(flags, "limit"),
+            json,
+          });
+          return;
+        case "show":
+          await deploymentsShow(
+            required(positionals[1], "A deployment id", "deployments show <id>"),
+            json,
+          );
+          return;
+        case "logs":
+          await deploymentsLogs(
+            required(positionals[1], "A deployment id", "deployments logs <id>"),
+            { limit: count(flags, "limit"), json },
+          );
+          return;
+        case "cancel":
+          await deploymentsCancel(
+            required(positionals[1], "A deployment id", "deployments cancel <id>"),
+            { yes: flags.has("yes"), json },
+          );
+          return;
+        default:
+          throw unknownSubcommand("deployments", positionals[0], ["ls", "show", "logs", "cancel"]);
+      }
+    }
+
+    // Top-level alias. Cancelling is urgent by nature — a build is burning
+    // minutes while you look up the subcommand — so it gets the short spelling.
+    case "cancel": {
+      const { flags, positionals } = parseArgs(rest, RESOURCE_BOOLEANS);
+      const { deploymentsCancel } = await import("./commands/deployments.js");
+
+      await deploymentsCancel(required(positionals[0], "A deployment id", "cancel <id>"), {
+        yes: flags.has("yes"),
+        json: flags.has("json"),
+      });
+      return;
+    }
+
+    case "env": {
+      const { flags, positionals } = parseArgs(rest, RESOURCE_BOOLEANS);
+      const { envList, envRemove, envSet } = await import("./commands/env.js");
+      const service = value(flags, "service");
+      const json = flags.has("json");
+
+      switch (positionals[0]) {
+        case "ls":
+        case "list":
+          await envList({
+            service,
+            project: value(flags, "project"),
+            reveal: flags.has("reveal"),
+            json,
+          });
+          return;
+        case "set":
+          await envSet(
+            required(positionals[1], "A variable name", "env set KEY [VALUE]"),
+            // Absent on purpose is a supported case: envSet then reads the
+            // value from a hidden prompt or from stdin.
+            positionals[2],
+            { service, scope: value(flags, "scope"), secret: flags.has("secret"), json },
+          );
+          return;
+        case "rm":
+        case "remove":
+          await envRemove(required(positionals[1], "A variable name", "env rm KEY"), {
+            service,
+            yes: flags.has("yes"),
+            json,
+          });
+          return;
+        default:
+          throw unknownSubcommand("env", positionals[0], ["ls", "set", "rm"]);
+      }
+    }
+
+    case "domains": {
+      const { flags, positionals } = parseArgs(rest, RESOURCE_BOOLEANS);
+      const { domainsAdd, domainsList, domainsRemove, domainsVerify } = await import(
+        "./commands/domains.js"
+      );
+      const service = value(flags, "service");
+      const json = flags.has("json");
+
+      switch (positionals[0]) {
+        case "ls":
+        case "list":
+          await domainsList({ service, project: value(flags, "project"), json });
+          return;
+        case "add":
+          await domainsAdd(
+            required(positionals[1], "A domain", "domains add app.example.com"),
+            { service, json },
+          );
+          return;
+        case "verify":
+          await domainsVerify(
+            required(positionals[1], "A domain", "domains verify app.example.com"),
+            { service, json },
+          );
+          return;
+        case "rm":
+        case "remove":
+          await domainsRemove(
+            required(positionals[1], "A domain", "domains rm app.example.com"),
+            { service, json, yes: flags.has("yes") },
+          );
+          return;
+        default:
+          throw unknownSubcommand("domains", positionals[0], ["ls", "add", "verify", "rm"]);
+      }
     }
 
     case "schema": {

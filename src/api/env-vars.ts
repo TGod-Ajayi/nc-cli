@@ -78,3 +78,29 @@ export async function setEnvVar(
   );
   return data.setEnvVars;
 }
+
+/**
+ * Removes one variable by key.
+ *
+ * Returns the same `EnvVarMutationResult` as `setEnvVars`, so the caller learns
+ * whether the service has to redeploy before the removal takes effect — a
+ * running process keeps the value it started with either way.
+ */
+export async function deleteEnvVar(
+  serviceId: string,
+  key: string,
+): Promise<EnvVarMutationResult> {
+  const data = await authed<{ deleteEnvVar: EnvVarMutationResult }>(
+    `
+      mutation DeleteEnvVar($serviceId: ID!, $key: String!) {
+        deleteEnvVar(serviceId: $serviceId, key: $key) {
+          needsRedeploy
+          warnings
+          envVars { key value scope secret linked }
+        }
+      }
+    `,
+    { serviceId, key },
+  );
+  return data.deleteEnvVar;
+}

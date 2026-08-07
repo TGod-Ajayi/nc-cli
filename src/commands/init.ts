@@ -19,7 +19,6 @@ import process from "node:process";
 
 import { askManifestBasics } from "../deploy-static/configure.js";
 import {
-  LOCAL_SCHEMA_PATH,
   MANIFEST_FILENAME,
   MANIFEST_VERSION,
   detectLocal,
@@ -29,7 +28,7 @@ import {
 import type { Manifest } from "../deploy-static/manifest.js";
 import { programName } from "../program-name.js";
 import { isInteractive, requireTty, write } from "../terminal.js";
-import { writeLocalSchema } from "./schema.js";
+import { refreshLinkedLocalSchema, remoteSchemaUrl } from "./schema.js";
 
 export interface InitOptions {
   /** Positional argument: directory to initialise. Defaults to the cwd. */
@@ -101,7 +100,7 @@ export async function init(options: InitOptions): Promise<void> {
   );
 
   const manifest: Manifest = { ...previous };
-  manifest.$schema = previous.$schema ?? LOCAL_SCHEMA_PATH;
+  manifest.$schema = previous.$schema ?? remoteSchemaUrl();
   manifest.version = previous.version ?? MANIFEST_VERSION;
   manifest.name = answers.name;
   manifest.output = answers.output;
@@ -113,7 +112,7 @@ export async function init(options: InitOptions): Promise<void> {
   if (index !== undefined) manifest.index = index;
 
   writeManifest(manifestPath, manifest);
-  writeLocalSchema(root);
+  refreshLinkedLocalSchema(root, manifest);
 
   if (options.json) {
     process.stdout.write(
@@ -125,7 +124,7 @@ export async function init(options: InitOptions): Promise<void> {
   if (interactive) write("\n");
   process.stdout.write(`${manifestPath}\n`);
   write(
-    `Wrote ${MANIFEST_FILENAME} (+ ${LOCAL_SCHEMA_PATH} for your editor)\n` +
+    `Wrote ${MANIFEST_FILENAME}\n` +
       (manifest.serviceId === undefined
         ? `Run \`${programName()} deploy\` to create the site; the id it returns is written back here.\n`
         : `Run \`${programName()} deploy\` to update the existing site.\n`),

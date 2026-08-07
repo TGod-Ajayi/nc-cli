@@ -5,7 +5,15 @@
 
 import { authed } from "./transport.js";
 import { PROJECT_FIELDS, SERVICE_FIELDS } from "./fields.js";
-import type { Project, ProjectWithTeam, ServiceSummary, Team } from "./types.js";
+import type {
+  MyService,
+  Project,
+  ProjectWithTeam,
+  ServiceConnection,
+  ServiceSummary,
+  ServiceType,
+  Team,
+} from "./types.js";
 
 
 export async function listTeams(): Promise<Team[]> {
@@ -64,6 +72,71 @@ export async function getProject(projectId: string): Promise<Project> {
     { id: projectId },
   );
   return data.project;
+}
+
+/**
+ * Every service the caller can reach, flat.
+ *
+ * One request, no team/project/environment walk — which is what makes it the
+ * right basis for resolving a service *name* to an id. `listProjects` +
+ * `getProject` is the richer but far chattier route.
+ */
+export async function listMyServices(): Promise<MyService[]> {
+  const data = await authed<{ myServices: MyService[] }>(`
+    query MyServices { myServices { id name projectName type } }
+  `);
+  return data.myServices;
+}
+
+/**
+ * A project with everything the navigator needs in one request: environments,
+ * their region/replica/traffic banner, and the services inside each.
+ *
+ * Kept separate from `getProject` because the extra `summary` selection is only
+ * worth its cost when something is going to render it.
+ */
+export async function getProjectTree(projectId: string): Promise<Project> {
+  const data = await authed<{ project: Project }>(
+    `
+      query ProjectTree($id: ID!) {
+        project(id: $id) {
+          ${PROJECT_FIELDS}
+          environments {
+            id
+            name
+            isPreview
+            summary { region regionKey replicas trafficStatus }
+            services { ${SERVICE_FIELDS} }
+          }
+        }
+      }
+    `,
+    { id: projectId },
+  );
+  return data.project;
+}
+
+/**
+ * Connection credentials for a datastore.
+ *
+ * Null for a service that has none — a web service has no `connection`, and
+ * asking for one is a reasonable thing for a caller to do without checking the
+ * type first.
+ */
+export async function getServiceConnection(
+  serviceId: string,
+): Promise<ServiceConnection | null> {
+  const data = await authed<{ service: { connection: ServiceConnection | null } }>(
+    `
+      query ServiceConnection($id: ID!) {
+        service(id: $id) {
+          connection { scheme host port username password database url externalUrl }
+        }
+      }
+    `,
+    { id: serviceId },
+  );
+  return data.service.connection;
 }
 
 export interface ServiceDetail extends ServiceSummary {

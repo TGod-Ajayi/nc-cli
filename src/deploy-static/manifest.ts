@@ -46,8 +46,9 @@ export const manifestSchema = z
       .string()
       .optional()
       .describe(
-        "Path to the JSON Schema for editor completion. `naijacloud schema --write` " +
-          `refreshes the local copy at ${LOCAL_SCHEMA_PATH}.`,
+        "JSON Schema for editor completion — by default the hosted copy for the CLI " +
+          "version that wrote this file. `naijacloud schema --write` swaps it for a " +
+          `local copy at ${LOCAL_SCHEMA_PATH}, for editors with no network access.`,
       ),
     version: z
       .number()
@@ -71,6 +72,16 @@ export const manifestSchema = z
         "The site this directory deploys to, written by the first successful deploy. " +
           "Its presence is what makes a deploy a redeploy: same site, same URL, " +
           "atomic cutover.",
+      ),
+    environmentId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Environment this site is created in, e.g. the project's 'prod'. Services " +
+          "belong to an environment, not directly to a project, and which one they " +
+          "are in is what makes a deploy production. Written back by the first " +
+          "deploy that targets one; without it the platform places the site itself.",
       ),
     build: z
       .string()
@@ -118,6 +129,7 @@ const KNOWN_KEYS = [
   "version",
   "name",
   "serviceId",
+  "environmentId",
   "build",
   "output",
   "spa",
