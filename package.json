@@ -37,6 +37,8 @@
     "packaging": "node scripts/render-packaging.mjs",
     "//prepare": "Runs on `npm install` and on `npm install -g .`, so a fresh clone gets a usable build/cli.js without a separate step.",
     "prepare": "npm run build",
+    "//version": "Runs after `npm version` writes the new number and before it makes the bump commit, so the regenerated schema lands *in* that commit. schema/naijacloud.schema.json embeds the version in x-generated-by, so bumping without rebuilding leaves it stale and CI fails the check on the next push. Only fires for `npm version` — hand-editing the version field skips it.",
+    "version": "npm run build && git add schema/naijacloud.schema.json",
     "prepublishOnly": "npm run clean:build && npm run build",
     "inspector": "npx @modelcontextprotocol/inspector node build/cli.js mcp"
   },
