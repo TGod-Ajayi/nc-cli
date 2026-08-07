@@ -34,7 +34,7 @@ import {
   listEnvVarsByService,
   listMyServices,
   listProjects,
-  SQL_TYPES,
+  isQueryable,
   triggerDeploy,
 } from "../api/index.js";
 import type {
@@ -49,7 +49,20 @@ import type { Choice } from "../interactive.js";
 import { programName } from "../program-name.js";
 import { promptLine, promptYesNo, write } from "../terminal.js";
 import { resolveProjectId, serviceIdFromManifest } from "./resolve.js";
+import { dbShell, dbTables } from "./db.js";
 import { waitForDeployment } from "./wait.js";
+
+/**
+ * What the `db` screens assume when reached from the navigator rather than from
+ * flags: interactive output, platform defaults, and confirmations left on.
+ */
+const DB_DEFAULTS = {
+  json: false,
+  maxRows: undefined,
+  schema: undefined,
+  format: undefined,
+  yes: false,
+} as const;
 
 /* -------------------------------------------------------------------------- */
 /* Entry                                                                      */
@@ -297,6 +310,8 @@ type Leaf =
   | "variables"
   | "domains"
   | "connection"
+  | "tables"
+  | "console"
   | "redeploy";
 
 /**
@@ -311,12 +326,22 @@ function leafChoices(service: ServiceSummary): Choice<Leaf>[] {
 
   if (datastore) {
     choices.push({ label: "Connection details", value: "connection" });
-    choices.push({
-      label: "SQL console",
-      hint: SQL_TYPES.has(service.type) ? "not implemented (§3.5)" : "not a SQL engine",
-      value: "overview",
-      disabled: true,
-    });
+
+    // Key-value engines take commands rather than statements, so the console
+    // genuinely does not apply to them — that is a different feature, not a
+    // missing one.
+    if (isQueryable(service.type)) {
+      choices.push({ label: "Tables", value: "tables" });
+      choices.push({ label: "SQL console", hint: "opens a shell", value: "console" });
+    } else {
+      choices.push({
+        label: "Key browser",
+        hint: "not implemented (Tier 3)",
+        value: "overview",
+        disabled: true,
+      });
+    }
+
     choices.push({
       label: "Backups",
       hint: "not implemented (Tier 2)",
@@ -365,6 +390,12 @@ async function serviceMenu(path: string, summary: ServiceSummary): Promise<void>
         break;
       case "connection":
         await showConnection(summary);
+        break;
+      case "tables":
+        await showTables(summary);
+        break;
+      case "console":
+        await openConsole(summary);
         break;
       case "deployments":
         await showDeployments(summary);
@@ -439,6 +470,24 @@ async function showConnection(summary: ServiceSummary): Promise<void> {
   ]);
 
   await pause();
+}
+
+async function showTables(summary: ServiceSummary): Promise<void> {
+  heading(summary.name, "tables");
+  await dbTables({ ...DB_DEFAULTS, service: summary.id });
+  await pause();
+}
+
+/**
+ * Hands off to the same REPL `naijacloud db shell` runs.
+ *
+ * The navigator does not get its own console: one implementation means one set
+ * of guardrails, so a DROP typed in here is challenged exactly as it would be
+ * from the command line.
+ */
+async function openConsole(summary: ServiceSummary): Promise<void> {
+  write("\n");
+  await dbShell({ ...DB_DEFAULTS, service: summary.id });
 }
 
 async function showDeployments(summary: ServiceSummary): Promise<void> {

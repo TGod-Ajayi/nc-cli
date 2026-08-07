@@ -27,7 +27,7 @@ login | logout | whoami                      auth
 deploy | redeploy | init | schema            ship
 project                                      interactive: project > env > service
 projects | services | deployments | cancel   inspect and change
-env | domains
+env | domains | db
 mcp                                          the agent-facing half
 ```
 
@@ -61,7 +61,7 @@ tools yet — see §7, which is now a short job rather than a speculative one.
 | Domains | `addCustomDomain`, `verifyCustomDomain`, `removeCustomDomain`, `dnsTarget.records` / `.conflicts` | ✅ except rich dnsTarget | 🟡 add + list |
 | PR previews | `servicePreviews`, `prPreview`, `setServicePreviewsEnabled`, `teardownPreview` | 🔴 | 🔴 |
 | Cron jobs | `cronRuns`, `cronRun`, `cronRunLogs`, `runCronJob`, `deployCronJob`, `updateCronJob`, `setCronJobSuspended`, `cronStats` | 🔴 | 🔴 |
-| Databases (Studio) | `runDatabaseQuery`, `databaseObjects`, `tableColumns`, `tableStats`, `schemaGraph`, `insertRow`, `updateRow`, `deleteRow`, `migrations`, `savedQueries`, `exportDatabase`, `exportTable` | 🔴 | 🔴 |
+| Databases (Studio) | `runDatabaseQuery`, `databaseObjects`, `tableColumns`, `tableStats`, `schemaGraph`, `insertRow`, `updateRow`, `deleteRow`, `migrations`, `savedQueries`, `exportDatabase`, `exportTable` | ✅ console, tables, describe, export | 🔴 |
 | Backups | `backups`, `backupSchedule`, `setBackupFrequency`, `runBackupNow`, `restoreBackup`, `deleteBackup`, `backupDownloadUrl`, `restore` | 🔴 | 🔴 |
 | Redis / cache | `redisKeys`, `redisValue`, `cacheStats`, `cacheConfig`, `setCacheConfig`, `runCacheCommand` | 🔴 | 🔴 |
 | Object storage | ~25 ops — buckets, objects, presigned upload/download, policy, CORS, lifecycle, versioning, credentials | 🔴 | 🔴 |
@@ -123,6 +123,27 @@ a targeted create, so later deploys and the navigator agree on where the site
 lives. A bare environment name is refused rather than searched for — nearly
 every project has a `prod`, and there is no environment-by-name query that would
 make guessing safe, so it must be `project/environment` or an id.
+
+**The first-run prompt asks.** A `--env` flag alone would have made this an
+opt-in that the default path silently skipped — nobody passes a flag on a first
+run, so every zero-config deploy would have kept producing sites outside the
+tree, which is the thing being fixed. `init` and the first `deploy` therefore
+both offer the choice, sharing one implementation
+(`src/deploy-static/target.ts`) exactly as they share the other manifest
+questions.
+
+Three properties keep it from taxing the flagship flow:
+
+- **The platform default stays the default**, first in the list and one keypress
+  away, so the zero-config path is unchanged in length and in behaviour.
+- **One request, one screen.** `listEnvironmentChoices` extends the existing
+  aliased per-team query with `environments { id name isPreview }`, so every
+  environment across every team arrives together and the question is a single
+  flat list of `project / environment` pairs — not a project screen followed by
+  an environment screen, and not one request per project.
+- **It never blocks a manifest.** `init` exists partly for machines with no
+  credentials; an API failure there skips the question rather than failing the
+  command.
 
 #### The manifest: `naijacloud.json`
 
@@ -223,6 +244,11 @@ No naijacloud.json here — a few questions, then this is the last time.
   Build command       npm run build         (detected: vite)
   Output directory    dist                  (detected)
   Single-page app?    yes                   (detected)
+
+  Where should this site live?
+❯ Let NaijaCloud place it    creates a new project
+  acme / prod                Acme Inc
+  acme / staging             Acme Inc
 
 Deploying dist (18 files, 2.1 MB)…
 ✓ https://acme-marketing.naijacloud.com
@@ -449,21 +475,63 @@ gitignored.
 project, `--env prod`). Without this, Tier 1 items 3.1, 3.2, 3.5 and 3.6 are all
 theoretically available and practically unusable.
 
-### 3.5 `naijacloud db` — SQL console
+### 3.5 `naijacloud db` — SQL console ✅
+
+**Status: implemented.** `src/api/database.ts` (operations), `src/commands/db.ts`
+(commands, REPL, safety), plus `printGrid` in `src/output.ts` and the *Tables* /
+*SQL console* entries in the §3.3a navigator.
 
 `runDatabaseQuery(serviceId, statement, maxRows)` is **write-capable** and runs
 as the service's own DB user, returning `{ columns, rows, rowCount, truncated,
-message, notices, executionMs }` (`nc-dashboard/modules/services/services.gql`).
-A terminal is the better client for this than the Studio UI.
+message, notices, executionMs, engine }`. A terminal is the better client for
+this than the Studio UI.
 
 ```
 naijacloud db query "SELECT …"     one-shot, table or --json output
-naijacloud db shell                REPL over runDatabaseQuery
-naijacloud db tables               databaseObjects
+naijacloud db shell                REPL; \dt, \d <table>, \q, multi-line
+naijacloud db tables               databaseObjects + tableStats row estimates
 naijacloud db describe <table>     tableColumns
-naijacloud db dump [--format]      exportDatabase → download URL
+naijacloud db dump [--format]      exportDatabase → expiring download URL
 naijacloud db export <table>       exportTable
 ```
+
+**Which engines.** The console covers the SQL family plus MongoDB, mirroring how
+the dashboard splits its Studio (`web-service` / `datastore-service`) from the
+key browser it gives Redis and Valkey. A `db` command against a key-value store
+is refused with that distinction stated, not as a generic "unsupported".
+
+**Safety.** There is no read-only mode to ask the platform for, so the guard is
+local and deliberately narrow — a console that challenges every statement is one
+people stop reading:
+
+- The shell prompt is `environment/service=#`, so a production database never
+  looks like a scratch one.
+- DROP, TRUNCATE, ALTER, GRANT/REVOKE, and an UPDATE or DELETE **with no WHERE
+  clause** are confirmed. An ordinary filtered write runs unchallenged, because
+  that is what the console is for.
+- Non-interactive runs skip the prompt rather than failing on it. A statement
+  passed as an argument in CI was written deliberately, and requiring a flag
+  there would only break the pipelines using this correctly — `psql -c` makes
+  the same call.
+
+#### Platform bug worked around: a phantom trailing row
+
+`runDatabaseQuery` appends **one extra row containing a single empty cell to
+every non-empty result**, and counts it in `rowCount` — so
+`SELECT id, name … LIMIT 3` comes back as four rows with the last one blank.
+Confirmed against a live MySQL service across one-, two- and three-column
+selects; a zero-row result comes back clean (`columns: []`, `rows: []`), so the
+artifact only ever appears above real data.
+
+`stripPhantomRow` in `src/api/database.ts` removes it and re-derives `rowCount`,
+normalising at the API boundary so the console, `--json` and any future MCP tool
+all see the corrected shape. The trailing row is identified by not matching the
+result's own width, which is exact for multi-column results; for a single-column
+result the artifact is `[""]`, indistinguishable from a genuine trailing empty
+string, and is dropped anyway — a junk row on *every* one-column query is a
+constant visible wrong, against miscounting one pathological query by one row.
+
+**This is worth fixing upstream**; the workaround should be deleted when it is.
 
 ### 3.6 `naijacloud storage` — S3-style object ops
 
@@ -579,9 +647,10 @@ so an agent cannot report a conflicting record it should tell the user to remove
    already have (socket.io).
 3. ~~**Parity verbs** — projects / services / env / domains / deployments.~~ ✅
    Done in §3.3.
-4. **`db` and `storage`** — the two terminal-native subsystems. Both sit on the
-   command layer §3.3 built, so they are now additive: an operations module plus
-   a command file each.
+4. **`db`** ✅ (§3.5) **and `storage`** 🔴 (§3.6) — the two terminal-native
+   subsystems. `db` landed as predicted: one operations module plus one command
+   file on top of the §3.3 command layer. `storage` is the same shape, with the
+   region constraint in §6 as its one wrinkle.
 5. **§7's near-free MCP tools** — the API layer already has four of them; this is
    an afternoon, and it stops the agent surface trailing the CLI.
 6. **Tier 2**, then Tier 3 as demand appears.

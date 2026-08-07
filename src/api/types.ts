@@ -134,15 +134,39 @@ export const DATASTORE_TYPES: ReadonlySet<ServiceType> = new Set<ServiceType>([
   "VALKEY",
 ]);
 
-/** The datastores that speak SQL, and so can back a query console (§3.5). */
+/** The datastores that speak SQL. */
 export const SQL_TYPES: ReadonlySet<ServiceType> = new Set<ServiceType>([
   "POSTGRES",
   "MYSQL",
   "MARIADB",
 ]);
 
+/** Key-value engines: no query console, a key browser instead. */
+export const KEY_VALUE_TYPES: ReadonlySet<ServiceType> = new Set<ServiceType>([
+  "REDIS",
+  "VALKEY",
+]);
+
+/**
+ * Engines `runDatabaseQuery` can run statements against — the SQL family plus
+ * MongoDB, matching how the dashboard splits its own Studio from the key
+ * browser it gives Redis and Valkey.
+ */
+export const QUERYABLE_TYPES: ReadonlySet<ServiceType> = new Set<ServiceType>([
+  ...SQL_TYPES,
+  "MONGODB",
+]);
+
 export function isDatastore(type: ServiceType): boolean {
   return DATASTORE_TYPES.has(type);
+}
+
+export function isQueryable(type: ServiceType): boolean {
+  return QUERYABLE_TYPES.has(type);
+}
+
+export function isKeyValue(type: ServiceType): boolean {
+  return KEY_VALUE_TYPES.has(type);
 }
 
 export interface Project {

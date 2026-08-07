@@ -73,6 +73,34 @@ export function printTable<T>(
   process.stdout.write(`${lines.map((line) => `${indent}${line}`).join("\n")}\n`);
 }
 
+/**
+ * Writes a table whose columns are only known at runtime — a query result.
+ *
+ * `printTable` types its columns against the row shape, which a `SELECT` cannot
+ * do. The other difference is NULL: a database distinguishes it from the empty
+ * string, so it renders as a visible `NULL` rather than the `-` used for a
+ * field that simply has no value.
+ */
+export function printGrid(columns: readonly string[], rows: readonly (readonly (string | null)[])[]): void {
+  const text = rows.map((row) => columns.map((_, index) => row[index] ?? "NULL"));
+
+  const widths = columns.map((header, index) =>
+    Math.max(header.length, ...text.map((row) => row[index]!.length), 0),
+  );
+
+  const render = (cells: readonly string[]): string =>
+    cells.map((cell, index) => cell.padEnd(widths[index]!)).join("  ").trimEnd();
+
+  const lines = [
+    render(columns),
+    // A rule under the header: query output is often tall, and the header is
+    // the only thing telling you what column four was.
+    widths.map((width) => "─".repeat(width)).join("  "),
+    ...text.map(render),
+  ];
+  process.stdout.write(`${lines.join("\n")}\n`);
+}
+
 /** The machine-readable half of every command. */
 export function printJson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);

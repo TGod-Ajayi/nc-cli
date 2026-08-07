@@ -24,17 +24,19 @@ export async function listTeams(): Promise<Team[]> {
 }
 
 /**
- * Lists every project the caller can see.
+ * Every project the caller can see, tagged with its team.
  *
  * `projects` is team-scoped in the schema, so this resolves the caller's teams
- * first and then fetches all teams' projects in one aliased query.
+ * first and then fetches all teams' projects in **one** aliased query —
+ * `selection` is spliced into each alias, so asking for environments too costs
+ * nothing beyond a bigger response.
  */
-export async function listProjects(): Promise<ProjectWithTeam[]> {
+async function projectsAcrossTeams(selection: string): Promise<ProjectWithTeam[]> {
   const teams = await listTeams();
   if (teams.length === 0) return [];
 
   const aliases = teams
-    .map((_, index) => `t${index}: projects(teamId: $team${index}) { ${PROJECT_FIELDS} }`)
+    .map((_, index) => `t${index}: projects(teamId: $team${index}) { ${selection} }`)
     .join("\n");
   const params = teams.map((_, index) => `$team${index}: ID!`).join(", ");
 
@@ -50,6 +52,49 @@ export async function listProjects(): Promise<ProjectWithTeam[]> {
 
   return teams.flatMap((team, index) =>
     (data[`t${index}`] ?? []).map((project) => ({ ...project, teamName: team.name })),
+  );
+}
+
+export async function listProjects(): Promise<ProjectWithTeam[]> {
+  return await projectsAcrossTeams(PROJECT_FIELDS);
+}
+
+/** One `project / environment` pair — a place a service can be created. */
+export interface EnvironmentChoice {
+  projectId: string;
+  projectName: string;
+  teamName: string;
+  environmentId: string;
+  environmentName: string;
+  isPreview: boolean;
+}
+
+/**
+ * Every environment the caller can deploy into, across every project and team,
+ * in **one** request.
+ *
+ * Returned flattened rather than as nested projects because that is the shape
+ * the question needs — "where should this live?" is answered with one flat list
+ * of pairs, not a project screen followed by an environment screen. Flattening
+ * here also keeps the light `{ id name isPreview }` selection from having to
+ * masquerade as an `EnvironmentSummary`, which carries services this query
+ * deliberately does not ask for.
+ */
+export async function listEnvironmentChoices(): Promise<EnvironmentChoice[]> {
+  const projects = await projectsAcrossTeams(
+    `${PROJECT_FIELDS}
+     environments { id name isPreview }`,
+  );
+
+  return projects.flatMap((project) =>
+    (project.environments ?? []).map((environment) => ({
+      projectId: project.id,
+      projectName: project.name,
+      teamName: project.teamName,
+      environmentId: environment.id,
+      environmentName: environment.name,
+      isPreview: environment.isPreview,
+    })),
   );
 }
 

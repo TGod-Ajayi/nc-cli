@@ -46,6 +46,7 @@ import {
 } from "../deploy-static/manifest.js";
 import type { Manifest } from "../deploy-static/manifest.js";
 import { askManifestBasics } from "../deploy-static/configure.js";
+import { askEnvironment } from "../deploy-static/target.js";
 import { programName } from "../program-name.js";
 import { resolveEnvironmentId } from "./resolve.js";
 import { isInteractive, requireTty, write } from "../terminal.js";
@@ -150,7 +151,7 @@ async function resolveConfig(options: DeployOptions): Promise<ResolvedConfig> {
   // environment the existing service already lives in.
   const environmentRef =
     options.env ?? envValue("NAIJACLOUD_ENVIRONMENT_ID") ?? manifest.environmentId;
-  const environmentId =
+  let environmentId =
     environmentRef === undefined || serviceId !== undefined
       ? undefined
       : await resolveEnvironmentId(environmentRef);
@@ -192,6 +193,17 @@ async function resolveConfig(options: DeployOptions): Promise<ResolvedConfig> {
   output = answers.output;
   spa = answers.spa;
   const chosenBuild = answers.build;
+
+  // Asked last, and only when creating: it is the "where" after the "what", and
+  // a redeploy already has an answer it cannot change.
+  if (serviceId === undefined) {
+    const target = await askEnvironment({
+      interactive,
+      settled: environmentId,
+    });
+    if (target.cancelled) throw new Error("Cancelled.");
+    environmentId = target.environmentId;
+  }
 
   if (interactive) write("\n");
 

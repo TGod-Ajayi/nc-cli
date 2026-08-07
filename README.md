@@ -175,7 +175,7 @@ Token resolution order is `HOSTING_API_TOKEN` → `~/.naijacloud/config.json`. I
 naijacloud deploy
 ```
 
-That is the whole command. In a directory it has not seen before it asks four questions, deploys, and writes the answers to `naijacloud.json` — so every run after the first takes no arguments at all:
+That is the whole command. In a directory it has not seen before it asks a few questions, deploys, and writes the answers to `naijacloud.json` — so every run after the first takes no arguments at all:
 
 ```
 $ naijacloud deploy
@@ -185,6 +185,12 @@ No naijacloud.json here — a few questions, then this is the last time.
   Build command     (from package.json; 'none' to skip) [npm run build]:
   Output directory  (detected) [dist]:
   Single-page app?  (detected: React Router) [Y/n]:
+
+  Where should this site live?
+❯ Let NaijaCloud place it    creates a new project
+  acme / prod                Acme Inc
+  acme / staging             Acme Inc
+  ↑↓ move · ↵ select · q cancel
 
 Running `npm run build`
 Packaged 18 files, 2.1 MB → 640 KB compressed
@@ -198,6 +204,8 @@ Wrote naijacloud.json
 ```
 
 Defaults are detected locally — the output directory from the conventional build folders, the build command from `package.json`, the SPA fallback from the framework in your dependencies. Nothing is guessed over the network.
+
+The last question is the exception, and the only one that reads anything: services live in an **environment**, so a static site is offered the same choice. Taking the default keeps the original behaviour — NaijaCloud places the site itself — and picking a `project / environment` puts it in the tree that `naijacloud project` walks. `naijacloud init` asks the same question, and `--env` answers it up front for both.
 
 The pipeline is: run the build, archive the output, request a presigned upload slot, PUT the bytes straight to storage, then release. The first deploy creates a site; every later one replaces it in place — same site, same URL, atomic cutover, with the previous version still serving if the new build fails.
 
@@ -319,9 +327,9 @@ Otherwise it asks. `naijacloud project <name|id>` targets one outright.
 karakata / dev / karakata-api        karakata / dev / karakata-dev
 ❯ Overview                           ❯ Overview
   Deployments                          Connection details
-  Variables                            SQL console    not implemented (§3.5)
-  Domains                              Backups        not implemented (Tier 2)
-  Runtime logs  not implemented
+  Variables                            Tables
+  Domains                              SQL console    opens a shell
+  Runtime logs  not implemented        Backups        not implemented (Tier 2)
   Redeploy
 ```
 
@@ -363,6 +371,10 @@ naijacloud domains ls --service api
 naijacloud domains add app.example.com --service api
 naijacloud domains verify app.example.com
 naijacloud domains rm app.example.com
+
+naijacloud db tables --service shop-db
+naijacloud db query "SELECT 1" --service shop-db
+naijacloud db shell --service shop-db
 ```
 
 ### Naming things
@@ -389,6 +401,66 @@ naijacloud redeploy api || exit 1   # waits by default; --no-wait returns once q
 ```
 
 `--yes` skips the confirmation on `cancel`, `env rm` and `domains rm`, which is what CI needs. `--limit` caps rows.
+
+### The database console
+
+```bash
+naijacloud db tables --service shop-db          # tables, views, row estimates
+naijacloud db describe users --service shop-db  # columns, types, keys, FKs
+naijacloud db query "SELECT id, email FROM users LIMIT 10" --service shop-db
+naijacloud db shell --service shop-db           # REPL
+naijacloud db dump --format sql --service shop-db
+naijacloud db export users --format csv --service shop-db
+```
+
+The shell is a REPL over the same operation, with the psql meta-commands already
+in your fingers. Statements end with `;` and may span lines:
+
+```
+$ naijacloud db shell --service shop-db
+shop-db · POSTGRES · prod
+Type \? for help, \q to quit.
+
+prod/shop-db=# SELECT id, email
+            -# FROM users;
+id  email
+──  ─────────────
+1   a@example.com
+1 row · 4 ms
+
+prod/shop-db=# \dt
+NAME          KIND   SCHEMA  ~ROWS
+users         table  public     42
+active_users  view   public      -
+```
+
+**Queries run as the service's own database user and can write.** There is no
+read-only mode to ask for, so two things guard against a mistake — and neither is
+a prompt on every statement, because a console that nags is one you stop reading:
+
+- **The prompt tells you where you are** — `environment/service=#`, so a
+  production database never looks like a scratch one.
+- **Irreversible statements are confirmed**: `DROP`, `TRUNCATE`, `ALTER`,
+  `GRANT`/`REVOKE`, and an `UPDATE` or `DELETE` with **no `WHERE` clause**. A
+  filtered write runs unchallenged.
+
+```
+$ naijacloud db query "DELETE FROM users" --service shop-db
+This deletes every row (no WHERE clause).
+Run it against shop-db (prod)? [y/N]: n
+Not run.
+```
+
+Outside a terminal the prompt is skipped rather than failed — a statement passed
+as an argument in CI was written deliberately, and `psql -c` makes the same call.
+`--yes` skips it explicitly.
+
+`db dump` and `db export` print an **expiring** presigned URL on stdout, with the
+filename, size and expiry on stderr, so `naijacloud db dump | xargs curl -O`
+works.
+
+Postgres, MySQL, MariaDB and MongoDB have a console. Redis and Valkey take
+commands rather than statements, so `db` declines them and says so.
 
 ### Environment variables are masked by default
 

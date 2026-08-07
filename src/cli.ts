@@ -65,6 +65,7 @@ const GROUPS: ReadonlyArray<readonly [string, ReadonlyArray<readonly [string, st
       ["cancel <deployment>", "Stop an in-flight deployment"],
       ["env ls|set|rm", "Environment variables on a service"],
       ["domains ls|add|verify|rm", "Custom domains on a service"],
+      ["db query|shell|tables", "SQL console; also describe, dump, export"],
     ],
   ],
   [
@@ -115,6 +116,17 @@ Env options
   \`env set KEY\` with no value reads it from a hidden prompt, or from stdin
   when piped — so a credential need not land in your shell history.
 
+Db options
+  --max-rows <n>               Cap rows returned by a query
+  --schema <name>              Schema for describe/export, when not the default
+  --format <fmt>               dump: sql|archive · export: csv|json|sql
+  --yes                        Skip the prompt on an irreversible statement
+
+  \`db shell\` is a REPL; statements end with ';' and \\dt, \\d, \\q work.
+  Queries run as the service's own database user and CAN WRITE. DROP, TRUNCATE,
+  ALTER and an unfiltered UPDATE/DELETE are confirmed first in a terminal.
+  \`db dump\`/\`db export\` print an expiring download URL on stdout.
+
 Login options
   --email <email>              Email, instead of being prompted
   --password <password>        Password, instead of being prompted
@@ -123,6 +135,7 @@ Login options
 Init options
   --name/--output/--index      Manifest values, instead of being prompted
   --spa / --no-spa             Serve the entry file for unmatched paths
+  --env <project/environment>  Environment the site will be created in
   --yes                        Accept detected defaults instead of prompting
   --force                      Rewrite an existing naijacloud.json
 
@@ -347,6 +360,7 @@ async function main(): Promise<void> {
         output: flags.get("output") || undefined,
         index: flags.get("index") || undefined,
         spa: tristate(flags, "spa"),
+        env: value(flags, "env"),
         yes: flags.has("yes"),
         force: flags.has("force"),
         json: flags.has("json"),
@@ -567,6 +581,60 @@ async function main(): Promise<void> {
           return;
         default:
           throw unknownSubcommand("domains", positionals[0], ["ls", "add", "verify", "rm"]);
+      }
+    }
+
+    case "db": {
+      const { flags, positionals } = parseArgs(rest, RESOURCE_BOOLEANS);
+      const { dbDescribe, dbDump, dbExport, dbQuery, dbShell, dbTables } = await import(
+        "./commands/db.js"
+      );
+      const options = {
+        service: value(flags, "service"),
+        json: flags.has("json"),
+        maxRows: count(flags, "max-rows"),
+        schema: value(flags, "schema"),
+        format: value(flags, "format"),
+        yes: flags.has("yes"),
+      };
+
+      switch (positionals[0]) {
+        case "query":
+          await dbQuery(
+            required(positionals[1], "A statement", 'db query "SELECT 1"'),
+            options,
+          );
+          return;
+        case "shell":
+          await dbShell(options);
+          return;
+        case "tables":
+          await dbTables(options);
+          return;
+        case "describe":
+          await dbDescribe(
+            required(positionals[1], "A table", "db describe <table>"),
+            options,
+          );
+          return;
+        case "dump":
+          await dbDump(options);
+          return;
+        case "export":
+          await dbExport(
+            required(positionals[1], "A table", "db export <table>"),
+            options,
+          );
+          return;
+        default:
+          throw unknownSubcommand("db", positionals[0], [
+            "query",
+            "shell",
+            "tables",
+            "describe",
+            "dump",
+            "export",
+          ]);
       }
     }
 

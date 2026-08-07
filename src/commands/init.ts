@@ -18,6 +18,7 @@ import { join, relative, resolve } from "node:path";
 import process from "node:process";
 
 import { askManifestBasics } from "../deploy-static/configure.js";
+import { askEnvironment } from "../deploy-static/target.js";
 import {
   MANIFEST_FILENAME,
   MANIFEST_VERSION,
@@ -27,6 +28,7 @@ import {
 } from "../deploy-static/manifest.js";
 import type { Manifest } from "../deploy-static/manifest.js";
 import { programName } from "../program-name.js";
+import { resolveEnvironmentId } from "./resolve.js";
 import { isInteractive, requireTty, write } from "../terminal.js";
 import { refreshLinkedLocalSchema, remoteSchemaUrl } from "./schema.js";
 
@@ -41,6 +43,8 @@ export interface InitOptions {
   yes: boolean;
   /** Rewrite an existing manifest. */
   force: boolean;
+  /** Environment the site will be created in, as an id or `project/environment`. */
+  env: string | undefined;
   json: boolean;
 }
 
@@ -99,6 +103,16 @@ export async function init(options: InitOptions): Promise<void> {
     },
   );
 
+  // Same question the first deploy asks, so the two cannot drift. An explicit
+  // --env is resolved eagerly, which turns a typo'd environment into an error
+  // here rather than at the first deploy.
+  const settled =
+    options.env !== undefined
+      ? await resolveEnvironmentId(options.env)
+      : previous.environmentId;
+  const target = await askEnvironment({ interactive, settled });
+  if (target.cancelled) throw new Error("Cancelled.");
+
   const manifest: Manifest = { ...previous };
   manifest.$schema = previous.$schema ?? remoteSchemaUrl();
   manifest.version = previous.version ?? MANIFEST_VERSION;
@@ -107,6 +121,8 @@ export async function init(options: InitOptions): Promise<void> {
   manifest.spa = answers.spa;
   if (answers.build !== undefined) manifest.build = answers.build;
   else delete manifest.build;
+
+  if (target.environmentId !== undefined) manifest.environmentId = target.environmentId;
 
   const index = options.index ?? previous.index;
   if (index !== undefined) manifest.index = index;
